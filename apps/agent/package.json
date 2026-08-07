@@ -1,0 +1,13 @@
+{
+  "name": "@repo/agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "studio-agent": "./dist/agent.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/cli.ts",
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/agent.js"
+  }
+}
