@@ -1,0 +1,27 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+file_include_globs = """
+.env
+.env*.local
+.vercel/**
+"""
+
+[scripts]
+setup = "./.conductor/setup.sh"
+run_mode = "concurrent"
+
+[scripts.run.web]
+command = "pnpm --filter @repo/web dev --port $CONDUCTOR_PORT"
+available_in = ["local", "cloud"]
+default = true
+icon = "play"
+
+[scripts.run.agent]
+command = "pnpm agent"
+available_in = ["local"]
+icon = "terminal"
+
+[scripts.run.checks]
+command = "pnpm typecheck && pnpm exec prettier --check ."
+available_in = ["local", "cloud"]
+icon = "check"
