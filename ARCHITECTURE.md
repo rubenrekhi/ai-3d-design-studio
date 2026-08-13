@@ -13,23 +13,24 @@ agent writes Python, runs Blender, and inspects the result. The person sees the 
 
 Use these words with these meanings. Do not use synonyms.
 
-| Term            | Meaning                                                                        |
-| --------------- | ------------------------------------------------------------------------------ |
-| **Turn**        | One call to the model, plus the tool calls in its reply.                       |
-| **Run**         | One user message, from start until the agent stops. A run contains many turns. |
-| **Settle**      | The end of a run. No retry, no compaction, and no queued message remains.      |
-| **Harness**     | The program that runs the agent. Knows 3D. Knows nothing about the product.    |
-| **Product**     | `apps/web`. Knows users, projects, sessions, and versions.                     |
-| **Workspace**   | The directory the agent works in. Also called `workdir`.                       |
-| **Blob**        | One file, stored under the SHA-256 hash of its content.                        |
-| **Manifest**    | A list of paths. Each path points to a blob hash.                              |
-| **Version**     | One manifest, plus metadata. Created at the end of a successful run.           |
-| **Session**     | One conversation. Holds many runs and produces many versions.                  |
-| **Materialize** | Make a workspace match a manifest. Writes files and deletes files.             |
-| **Reconcile**   | Materialize the workspace to the last committed manifest.                      |
-| **Compaction**  | Pi replaces old messages with a summary when the context gets full.            |
-| **Strip**       | Delete image blocks when writing the conversation to durable storage.          |
-| **Stub**        | Short text that replaces an image in the model's view of the conversation.     |
+| Term            | Meaning                                                                          |
+| --------------- | -------------------------------------------------------------------------------- |
+| **Turn**        | One call to the model, plus the tool calls in its reply.                         |
+| **Run**         | One user message, from start until the agent stops. A run contains many turns.   |
+| **Settle**      | The end of a run. No retry, no compaction, and no queued message remains.        |
+| **Harness**     | The program that runs the agent. Knows 3D. Knows nothing about the product.      |
+| **Product**     | `apps/web`. Knows users, projects, sessions, and versions.                       |
+| **Workspace**   | The directory the agent works in. Also called `workdir`.                         |
+| **Agent home**  | Machine-level directory holding every mode A session. Default `~/.studio-agent`. |
+| **Blob**        | One file, stored under the SHA-256 hash of its content.                          |
+| **Manifest**    | A list of paths. Each path points to a blob hash.                                |
+| **Version**     | One manifest, plus metadata. Created at the end of a successful run.             |
+| **Session**     | One conversation. Holds many runs and produces many versions.                    |
+| **Materialize** | Make a workspace match a manifest. Writes files and deletes files.               |
+| **Reconcile**   | Materialize the workspace to the last committed manifest.                        |
+| **Compaction**  | Pi replaces old messages with a summary when the context gets full.              |
+| **Strip**       | Delete image blocks when writing the conversation to durable storage.            |
+| **Stub**        | Short text that replaces an image in the model's view of the conversation.       |
 
 ---
 
@@ -314,7 +315,7 @@ Two mechanisms, at two different points:
 | **Stub**  | `context` event | Keep old images out of the model's view | None. Deep copy only.     |
 | **Strip** | The sync step   | Keep base64 out of durable storage      | Image blocks are dropped. |
 
-The stub solves token cost. The strip solves storage cost. They are independent, and section 11.2
+The stub solves token cost. The strip solves storage cost. They are independent, and section 11.3
 shows that one mode uses only the first.
 
 **Constraint on `inspect_scene`.** This holds only while the tool's output can be rebuilt from the
@@ -541,7 +542,7 @@ points, and where the agent process runs.
 | Started by     | `pnpm agent`               | the product                  | the product                 |
 | Transport      | direct call                | `child_process.spawn`        | `sandbox.runCommand`        |
 | `onCommit`     | none                       | `SupabaseCommitHook`         | `SupabaseCommitHook`        |
-| Workspace      | `.localstore/…/workspace`  | `.localstore/…/workspace`    | `/vercel/sandbox/workspace` |
+| Workspace      | `<agent home>/sessions/…`  | product-chosen path          | `/vercel/sandbox/workspace` |
 | Blobs          | none                       | local Supabase Storage       | Supabase Storage            |
 | Metadata       | none                       | local Postgres               | Postgres                    |
 | Conversation   | the file, and nothing else | synced to `sessions.history` | synced, same code           |
@@ -551,22 +552,18 @@ points, and where the agent process runs.
 mode B: the real commit path, the real schema, and the real storage API, on a laptop. `supabase start`
 provides Postgres and Storage in containers.
 
-**Mode A has no store at all.** No `onCommit`, therefore no versions, no manifests, and no blobs. The
-agent edits a directory and that is all. It answers one question: can the agent build the scene?
+**Mode A has no store at all.** No `onCommit`, therefore no versions, no manifests, and no blobs. It
+keeps a workspace in the agent home (11.2) and nothing else. It answers one question: can the agent
+build the scene?
 
 **There is one store implementation.** Do not add a file-backed stand-in for local work. A second
 implementation would have to be maintained, would never be the one that ships, and would drift from
 the real one with nothing to detect it. Mode B keeps the commit path exercised against the real
 thing.
 
-```text
-.localstore/                gitignored
-  sessions/<id>/
-    workspace/              the agent's directory, same shape as the sandbox
-      .pi/session.jsonl     conversation, inside the workspace on purpose
-```
-
-`workdir` is always passed in. Never hardcode it. Never infer it.
+`workdir` reaches the harness as an absolute path. `createStudioAgent()` never computes it, never
+defaults it, and never infers it from the process. The caller decides, and 11.2 covers what the mode
+A caller decides.
 
 ### 11.1 The entry point
 
@@ -574,7 +571,48 @@ The entry point is ours. It is not `pi --mode rpc`. It wraps `createStudioAgent(
 protocol in `packages/shared`. Pi's RPC mode is a usable fallback, but the SDK keeps tool
 registration, the build guard, and the commit hook in one process.
 
-### 11.2 Image stripping across the modes
+In mode A the same entry point is also the caller, so it resolves the workspace path itself. That
+makes `cli.ts` a thin product: it may know about homes, slugs, and sessions. The harness beneath it
+may not.
+
+### 11.2 The agent home
+
+Mode A keeps its state on the machine, not in a repository.
+
+```text
+~/.studio-agent/            override: --home, or STUDIO_AGENT_HOME
+  sessions/
+    <slug>/
+      workspace/            the agent's directory, same shape as the sandbox
+        scene.py
+        assets/*.py
+        scene.glb
+        .pi/session.jsonl   conversation, inside the workspace on purpose
+```
+
+Precedence is `--workdir` (an absolute path, which bypasses the home entirely), then `--home`, then
+`STUDIO_AGENT_HOME`, then the default.
+
+**Sessions are flat, with no namespace per repository.** A coding agent works on your checkout, so it
+must group sessions by project. This agent does not. Its workspace is a scratch directory that it
+owns, and the scene inside it is the project. The repository you launched from is not part of the
+identity of a session, so any session resumes from anywhere.
+
+`<slug>` is human-readable, from `--session <slug>`. You retype it every time you resume, and there
+is no session picker to browse instead.
+
+**One home per machine, shared by every checkout and every worktree.** A new Conductor workspace
+reaches every past session with nothing copied into it.
+
+The risk that comes with sharing: two workspaces can open the **same** session at once and write the
+same `.pi/session.jsonl`. Different slugs never collide, so this needs a lock rather than separate
+directories. Pi already depends on `proper-lockfile`; confirm what it protects before relying on it.
+
+Resolve the home from the home directory, never from the process working directory. `pnpm agent` runs
+with its working directory set to `apps/agent`, so a relative default lands somewhere surprising and
+stays hidden.
+
+### 11.3 Image stripping across the modes
 
 Stripping happens where the conversation crosses into durable storage. Mode A has no such crossing,
 so mode A strips nothing. Its session file keeps its images.
@@ -584,14 +622,14 @@ Three things make that safe:
 - **Token cost is handled elsewhere.** The `context` stub (section 7.3) works on a deep copy before
   every model call. It is independent of storage, so mode A does not re-send old renders either.
 - **The disk cost is small and disposable.** A screenshot is a few hundred kilobytes after base64.
-  `.localstore/` is gitignored. Delete the session directory to reclaim it.
+  Nothing in the agent home is tracked. Delete the session directory to reclaim it.
 - **The strip code stays exercised.** Mode B syncs to real Postgres, so the path runs during ordinary
   development.
 
 Do not give mode A a stripped copy for the sake of symmetry. That is the second store implementation
 that section 11 forbids.
 
-### 11.3 Override pi's session directory
+### 11.4 Override pi's session directory
 
 Pi writes sessions to `~/.pi/agent/sessions/` by default. That is outside the workspace. The manifest
 would not see it, and a new sandbox would start with no memory.
@@ -602,12 +640,13 @@ Set it explicitly, with `SessionManager.open(path)` in the SDK, or with `--sessi
 Set `agentDir` explicitly as well. It holds configuration and not state, but if it is left implicit it
 differs between local and sandbox without warning.
 
-### 11.4 Resuming a session
+### 11.5 Resuming a session
 
-`pnpm agent --session <path>` resumes a session. What that means depends on the mode.
+What a resume means depends on the mode.
 
-**Mode A** keeps the workspace on disk between runs, so there is nothing to restore. Point
-`SessionManager` at `<workdir>/.pi/session.jsonl` and start.
+**Mode A** resumes with `--session <slug>`. The workspace stays on disk in the agent home between
+runs, so there is nothing to restore. Resolve the slug, point `SessionManager` at
+`<workdir>/.pi/session.jsonl`, and start. The same slug from any checkout reaches the same session.
 
 **Modes B and C** must restore two things, because the workspace may be gone:
 
