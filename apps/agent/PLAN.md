@@ -33,13 +33,13 @@ touches Blender and no pi, P3 touches neither.
 
 ### P1 — pi wire-up · ~half day
 
-- [ ] Add the dependency, pinned exact: `@earendil-works/pi-coding-agent@0.83.0`
-- [ ] Replace the placeholder `cli.ts` with `createStudioAgent()`
-- [ ] Point `SessionManager.open()` at `<workdir>/.pi/session.jsonl`
-- [ ] Resolve the agent home: `--workdir` beats `--home` beats `STUDIO_AGENT_HOME` beats
+- [x] Add the dependency, pinned exact: `@earendil-works/pi-coding-agent@0.83.0`
+- [x] Replace the placeholder `cli.ts` with `createStudioAgent()`
+- [x] Point `SessionManager.open()` at `<workdir>/.pi/session.jsonl`
+- [x] Resolve the agent home: `--workdir` beats `--home` beats `STUDIO_AGENT_HOME` beats
       `~/.studio-agent`
-- [ ] `--session <slug>` resolves to `<home>/sessions/<slug>/workspace`
-- [ ] No custom tools, no prompt override, no extension yet
+- [x] `--session <slug>` resolves to `<home>/sessions/<slug>/workspace`
+- [x] No custom tools, no prompt override, no extension yet
 
 **Verify.** `pnpm agent --session t1`, hold a conversation, then confirm
 `~/.studio-agent/sessions/t1/workspace/.pi/session.jsonl` exists and grows. Quit, rerun with the same

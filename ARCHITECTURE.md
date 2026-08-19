@@ -159,25 +159,52 @@ harness never reconciles anything.
 `apps/agent` exports one function.
 
 ```ts
-export function createStudioAgent(opts: {
+export async function createStudioAgent(opts: {
   workdir: string
-  model: Model
+  model?: Model
   onCommit?: (changed: ChangedFiles, workdir: string) => Promise<void>
 }) {
-  const loader = new DefaultResourceLoader({
-    systemPromptOverride: () => SCENE_BUILDER_PROMPT,
-    extensionFactories: [studioExtension(opts.onCommit)],
-  })
+  // The conversation lives inside the workspace, and the workspace is the cwd —
+  // never the process cwd, which is `apps/agent` under `pnpm agent`.
+  const sessionManager = SessionManager.open(
+    `${opts.workdir}/.pi/session.jsonl`,
+    undefined,
+    opts.workdir,
+  )
 
-  return createAgentSession({
+  // Pi builds the session and its cwd-bound services together, in a factory the
+  // runtime reuses each time it swaps the session (/new, /resume, /fork).
+  const build = async ({ cwd, agentDir, sessionManager }) => {
+    const services = await createAgentSessionServices({
+      cwd,
+      agentDir,
+      resourceLoaderOptions: {
+        systemPrompt: SCENE_BUILDER_PROMPT,
+        extensionFactories: [studioExtension(opts.onCommit)],
+      },
+    })
+    const created = await createAgentSessionFromServices({
+      services,
+      sessionManager,
+      model: opts.model,
+      customTools: [runBlender, inspectScene, previewAsset],
+    })
+    return { ...created, services, diagnostics: services.diagnostics }
+  }
+
+  return createAgentSessionRuntime(build, {
     cwd: opts.workdir,
-    model: opts.model,
-    customTools: [runBlender, inspectScene, previewAsset],
-    sessionManager: SessionManager.open(`${opts.workdir}/.pi/session.jsonl`),
-    resourceLoader: loader,
+    agentDir: getAgentDir(),
+    sessionManager,
   })
 }
 ```
+
+`createStudioAgent` returns pi's runtime, not a bare session. The terminal UI (`pnpm agent`) is pi's
+`InteractiveMode`, and it takes only a runtime — the object that owns the session and can swap it for
+`/new`, `/resume`, and `/fork`. Pi builds bare sessions and runtimes on separate paths and offers no
+way to wrap one in the other, so the harness builds the runtime. It is a superset: a product caller
+reads its session as `runtime.session`.
 
 `studioExtension` is the only product seam. It owns the build guard, hashes the workspace, and calls
 `onCommit`. Pi does everything else.
@@ -185,7 +212,7 @@ export function createStudioAgent(opts: {
 `onCommit` is optional. Without it you get a working 3D agent in a terminal. That is the fastest
 development loop and the target for integration tests.
 
-The product reads events with `session.subscribe()`. It intercepts tool calls with
+The product reads events with `runtime.session.subscribe()`. It intercepts tool calls with
 `pi.on('tool_call')`, which can block a call and not only observe it.
 
 `run_blender` is built into the harness. The harness must guarantee a working build at the end of a
