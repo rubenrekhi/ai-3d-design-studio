@@ -63,13 +63,26 @@ half a day.
 
 ### P2 — Blender bridge · ~1 day
 
-- [ ] `src/blender.ts`, with no pi import anywhere in it
-- [ ] `runBlender(workdir, opts) → { ok, stdout, stderr, durationMs }`
-- [ ] Resolve the binary from `BLENDER_PATH`, falling back to the macOS app bundle path
-- [ ] Invoke `blender --background --python scene.py`
-- [ ] Timeout with a hard kill
-- [ ] Decide the **scene contract**: `scene.py` writes `scene.glb` into the workdir
-- [ ] Decide whether a bpy helper module ships in the image, or the agent writes raw bpy
+- [x] `src/blender.ts`, with no pi import anywhere in it
+- [x] `runBlender(workdir, opts) → { ok, stdout, stderr, durationMs }`
+- [x] Resolve the binary from `BLENDER_PATH`, falling back to the macOS app bundle path
+- [x] Invoke `blender --background --python-exit-code 1 --python scene.py`
+- [x] Timeout with a hard kill
+- [x] Decide the **scene contract**: `scene.py` writes `scene.glb` into the workdir
+- [x] Decide whether a bpy helper module ships in the image, or the agent writes raw bpy
+
+**Decided.**
+
+- **`ok` cannot trust Blender's exit code.** Under `--background --python`, Blender exits `0` even on a
+  `SyntaxError` or an unhandled exception. `--python-exit-code 1` turns a Python failure into a nonzero
+  exit; that flag is the only reason `ok` can mean "the build succeeded." Verified on 4.5.11 LTS.
+- **Scene contract.** `runBlender` runs with `cwd` at the workdir and the script path resolved against
+  it, so `scene.py`'s relative `export_scene.gltf(filepath="scene.glb")` lands in the workdir.
+  `opts.script` defaults to `scene.py`; `inspect_scene` (P4) reuses the same primitive with a render
+  script.
+- **Raw bpy, no helper module in v1.** `scene.py` is the asset (invariant 5) and stays self-contained.
+  The glTF export is one teachable line. Add a helper only if the model later drifts on export
+  settings — it is a pure addition when it is needed.
 
 **Verify.** Three cases, none of which involve a model:
 
