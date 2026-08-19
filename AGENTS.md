@@ -58,6 +58,33 @@ If code needs a comment to be understood, first try fixing the naming or structu
 - Run everything from the repo root: `pnpm web` (Next dev server), `pnpm agent` (harness in watch
   mode), `pnpm build`, `pnpm typecheck`, `pnpm format`.
 
+## Shipping work
+
+Formats live in `.github/`: `COMMIT_MESSAGE_TEMPLATE.md`, `PULL_REQUEST_TEMPLATE.md`,
+`ISSUE_TEMPLATE.md`.
+
+Ask for a commit, a PR, or a stack and the `pr-wizard` agent runs it — `.claude/agents/pr-wizard/`
+is the one place those steps are written down, and running them there keeps diffs and command output
+out of the main conversation. An agent with no subagent support reads that file and executes the
+steps itself. Either way these hold:
+
+- Stage explicit paths. Never `git add -A` or `git add .`.
+- No attribution lines in commits. Never force-push a branch that already exists on the remote.
+- Report what was done, including the cut chosen for a stack, rather than asking before doing it.
+
+One commit is one structured change; one PR is one commit; a feature is a stack of them read bottom
+to top. Anything longer than a single commit ships as a stack — a lone PR is the 1-of-1 case, not a
+different shape. Don't over-split: a layer that can't carry a real `<type>(<scope>): <summary>`, or
+that only makes sense once you read the layer above it, belongs to that layer instead.
+
+Cut bottom to top along the seams that already exist: `packages/shared` schemas → `apps/agent`
+harness → `apps/web` orchestration → `apps/web` UI. Every layer must pass `pnpm typecheck` on its
+own; a layer that only compiles once the layer above lands is a bad cut.
+
+Stacks need GitHub's `gh stack` extension. Conductor displays and merges a stack but never creates
+one, and a stack lives in a single workspace — move between its branches with `gh stack up`/`down`,
+not by opening a workspace per layer.
+
 ## This is NOT the Next.js you know
 
 `apps/web` runs **Next.js 16.3.0**, which has breaking changes — APIs, conventions, and file
