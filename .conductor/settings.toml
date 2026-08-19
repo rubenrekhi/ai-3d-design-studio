@@ -6,6 +6,16 @@ file_include_globs = """
 .vercel/**
 """
 
+[prompts]
+create_pr = """
+Delegate to the pr-wizard agent (.claude/agents/pr-wizard/AGENT.md) instead of running git or gh
+yourself. If you cannot spawn subagents, read that file and execute its steps.
+
+Commit any uncommitted work first. Base the PR on this workspace's target branch, `main` unless
+stated otherwise. Let pr-wizard pick between its PR and stack workflows — anything longer than a
+single commit ships as a stack. Report the cut it chose and every PR URL.
+"""
+
 [scripts]
 setup = "./.conductor/setup.sh"
 run_mode = "concurrent"
