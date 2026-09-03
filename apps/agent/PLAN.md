@@ -35,22 +35,31 @@ touches Blender and no pi, P3 touches neither.
 
 - [x] Add the dependency, pinned exact: `@earendil-works/pi-coding-agent@0.83.0`
 - [x] Replace the placeholder `cli.ts` with `createStudioAgent()`
-- [x] Point `SessionManager.open()` at `<workdir>/.pi/session.jsonl`
+- [x] Set pi's session directory to `<workdir>/.pi` **explicitly**, so conversations live in the
+      workspace and pi creates new ones there
 - [x] Resolve the agent home: `--workdir` beats `--home` beats `STUDIO_AGENT_HOME` beats
       `~/.studio-agent`
-- [x] `--session <slug>` resolves to `<home>/sessions/<slug>/workspace`
+- [x] `--project <name>` resolves to `<home>/projects/<name>/workspace`, created if absent
+- [x] Validate `<name>` against `^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$` before it becomes a
+      path
 - [x] No custom tools, no prompt override, no extension yet
 
-**Verify.** `pnpm agent --session t1`, hold a conversation, then confirm
-`~/.studio-agent/sessions/t1/workspace/.pi/session.jsonl` exists and grows. Quit, rerun with the same
-slug, and confirm the agent remembers the conversation.
+**Verify.** `pnpm agent --project t1`, hold a conversation, then confirm a `<timestamp>_<id>.jsonl`
+appears under `~/.studio-agent/projects/t1/workspace/.pi/` and grows. Quit, rerun with the same name,
+and confirm you land in a **new** conversation with the same workspace. Then `/resume` inside the TUI
+and confirm it lists the first one and nothing from any other project.
 
-That check is the point of the phase. It proves the session directory override works. Pi defaults to
-`~/.pi/agent/sessions/`, and every later phase assumes the file sits inside the workspace instead.
+That check is the point of the phase, and `/resume` is the sharp end of it. Pi's selector lists
+`SessionManager.list(cwd, sessionDir)`, so if the directory override did not take, it shows the
+machine's sessions instead of this project's. Pi defaults to `~/.pi/agent/sessions/<encoded-cwd>/`,
+and every later phase assumes conversations sit inside the workspace instead.
 
 Do not resolve paths relative to the process. `pnpm agent` runs with the working directory set to
 `apps/agent`, not the repository root, so a relative default lands somewhere surprising and stays
 hidden.
+
+Selecting a conversation from the command line is P9's `--session`. Until then every run opens a new
+one and `/resume` reaches the rest, which is enough to prove the override.
 
 **Why first.** If pi's SDK does not behave as documented, every later phase rests on it. Find out in
 half a day.
@@ -167,7 +176,12 @@ run-1 images are stubs while run-2 images are intact. Compare token counts.
 
 ### P9 — protocol and CLI · ~1 day
 
-- [ ] `--workdir` and `--session` flags
+- [ ] `--session <id>` — resolve against `<workdir>/.pi/` with `SessionManager.list()`, matching an ID
+      or a prefix. Absent means a new conversation
+- [ ] Reject `--session` without `--project` or `--workdir`
+- [ ] Pass the resolved file to `createStudioAgent({ workdir, sessionFile })`
+- [ ] The no-flag scaffolding flow, on pi's exported selector components
+- [ ] Fall back to the usage error when stdin is not a TTY
 - [ ] Emit JSONL events from `session.subscribe()`
 - [ ] Zod schemas in `packages/shared`
 
@@ -175,6 +189,10 @@ run-1 images are stubs while run-2 images are intact. Compare token counts.
 
 Split records on `\n` only. Node's `readline` also splits on U+2028 and U+2029, which are legal
 inside JSON strings, so it is not safe for this protocol.
+
+Then verify the two axes hold together: run twice against one `--project` with no `--session`, and
+confirm two files in `.pi/` and one workspace. Resume the first by ID and confirm `/resume` in the TUI
+lists both. `ARCHITECTURE.md` 11.1 has the full flag table and the flow.
 
 ---
 

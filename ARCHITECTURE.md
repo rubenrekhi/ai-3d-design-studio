@@ -21,13 +21,14 @@ Use these words with these meanings. Do not use synonyms.
 | **Harness**     | The program that runs the agent. Knows 3D. Knows nothing about the product.      |
 | **Product**     | `apps/web`. Knows users, projects, sessions, and versions.                       |
 | **Workspace**   | The directory the agent works in. Also called `workdir`.                         |
-| **Agent home**  | Machine-level directory holding every mode A session. Default `~/.studio-agent`. |
+| **Project**     | One scene: a workspace, its sessions, and its version history.                   |
+| **Agent home**  | Machine-level directory holding every mode A project. Default `~/.studio-agent`. |
 | **Blob**        | One file, stored under the SHA-256 hash of its content.                          |
 | **Manifest**    | A list of paths. Each path points to a blob hash.                                |
 | **Version**     | One manifest, plus metadata. Created at the end of a successful run.             |
-| **Session**     | One conversation. Holds many runs and produces many versions.                    |
+| **Session**     | One conversation against a project. Holds many runs. A project has many.         |
 | **Materialize** | Make a workspace match a manifest. Writes files and deletes files.               |
-| **Reconcile**   | Materialize the workspace to the last committed manifest.                        |
+| **Reconcile**   | Materialize the workspace to the project's newest version.                       |
 | **Compaction**  | Pi replaces old messages with a summary when the context gets full.              |
 | **Strip**       | Delete image blocks when writing the conversation to durable storage.            |
 | **Stub**        | Short text that replaces an image in the model's view of the conversation.       |
@@ -41,7 +42,8 @@ Use these words with these meanings. Do not use synonyms.
 2. **The harness holds no state the product cannot see.** It produces files in the workspace and one
    conversation document. Both leave through `onCommit`.
 3. **The workspace holds current state only.** Version history lives in the store. The conversation
-   document is the one exception. Section 9.2 excludes it from manifests to keep it a working copy.
+   documents are the one exception. Section 9.2 excludes them from manifests to keep them working
+   copies.
 4. **Durable storage is the source of truth.** Any sandbox filesystem can be destroyed and rebuilt.
 5. **Code is the asset.** `scene.py` and `assets/*.py` define the scene. The GLB is a build output. We
    store the GLB as well, but source is what must never be lost.
@@ -161,16 +163,16 @@ harness never reconciles anything.
 ```ts
 export async function createStudioAgent(opts: {
   workdir: string
+  sessionFile?: string
   model?: Model
   onCommit?: (changed: ChangedFiles, workdir: string) => Promise<void>
 }) {
-  // The conversation lives inside the workspace, and the workspace is the cwd —
+  // Conversations live inside the workspace, and the workspace is the cwd —
   // never the process cwd, which is `apps/agent` under `pnpm agent`.
-  const sessionManager = SessionManager.open(
-    `${opts.workdir}/.pi/session.jsonl`,
-    undefined,
-    opts.workdir,
-  )
+  const sessionDir = `${opts.workdir}/.pi`
+  const sessionManager = opts.sessionFile
+    ? SessionManager.open(opts.sessionFile, sessionDir, opts.workdir)
+    : SessionManager.create(opts.workdir, sessionDir)
 
   // Pi builds the session and its cwd-bound services together, in a factory the
   // runtime reuses each time it swaps the session (/new, /resume, /fork).
@@ -200,6 +202,12 @@ export async function createStudioAgent(opts: {
 }
 ```
 
+`sessionFile` selects which conversation to continue. Absent, the run starts a new one. The harness
+opens the path it is handed and never searches for it: finding a conversation from an ID means
+listing a directory and matching a prefix, which is a caller's job for the same reason resolving
+`workdir` is. Either way the session directory is `<workdir>/.pi`, so a new conversation lands beside
+the ones already there.
+
 `createStudioAgent` returns pi's runtime, not a bare session. The terminal UI (`pnpm agent`) is pi's
 `InteractiveMode`, and it takes only a runtime — the object that owns the session and can swap it for
 `/new`, `/resume`, and `/fork`. Pi builds bare sessions and runtimes on separate paths and offers no
@@ -223,8 +231,10 @@ run, and it cannot guarantee that through a tool it does not control.
 1. The harness contains no network clients except model SDKs. All other bytes leave through
    `onCommit`.
 2. The harness uses no product words. Its vocabulary is `workdir`, `turn`, `tool`, and `message`.
-   Pi's own `session` is generic conversation state and is allowed. If `version` or `project` appears
-   in `apps/agent`, something has leaked.
+   Pi's own `session` is generic conversation state and is allowed. If `version` appears in
+   `apps/agent`, something has leaked. `project` is allowed in `cli.ts` and nowhere else: `cli.ts` is
+   the mode A caller rather than the harness (11.1), so the word must not reach `agent.ts` or
+   anything `agent.ts` imports.
 3. Extend pi with tools and extensions. Never patch or fork it. If a requirement seems to need a
    fork, it belongs in `studioExtension`.
 4. `onCommit` is awaited and its errors propagate. The harness has no fallback. A failed commit is the
@@ -357,7 +367,7 @@ those, store that specific output as a deliberate exception. Do not build a gene
 ### 8.1 Sequence
 
 ```text
-1. The product reconciles the workspace to the last committed manifest.
+1. The product reconciles the workspace to the project's newest version.
      Safe to repeat. Runs at the START of every run. A crashed process cannot
      clean up after itself, so this is never a failure handler.
 2. The product starts the harness over a transport.
@@ -389,9 +399,10 @@ Invariant 7 protects the scene. It says nothing about the conversation, which is
 versioned state. A failed exchange belongs in the log. Without it, the person reloads the page and
 their own message has disappeared with the error.
 
-A failed run loses nothing while the sandbox lives. Pi appends to `.pi/session.jsonl` as messages
-happen. The file stays on disk and the next run reads it. Data is lost only if the sandbox itself
-dies, and then the workspace is gone as well and we restore from the last version.
+A failed run loses nothing while the sandbox lives. Pi appends to the session file in `.pi/` as
+messages happen. The file stays on disk and the next run that opens that conversation reads it. Data
+is lost only if the sandbox itself dies, and then the workspace is gone as well and we restore from
+the newest version.
 
 `agent_settled` is emitted from a `finally` block. It fires on errors, on aborts, and on token
 exhaustion. That is why it serves both rows of the table. Two consequences:
@@ -431,8 +442,12 @@ A diff of two manifests gives created, modified, and deleted files. Nothing depe
 reporting its own work. Files that Blender writes as a side effect are caught in the same way as
 files a tool wrote.
 
-Blobs are stored at `sessions/<id>/blobs/<sha256>`. A version is a set of path-to-hash pointers.
+Blobs are stored at `projects/<id>/blobs/<sha256>`. A version is a set of path-to-hash pointers.
 Therefore unchanged files are never uploaded twice, and a repeated upload is harmless.
+
+The prefix is the project and not the session because every session in a project edits one workspace.
+Two conversations that write an identical `scene.py` must reach one blob, and a rewind that crosses
+conversations must not have to look under a second prefix.
 
 The manifest supports three operations. That is its value:
 
@@ -457,9 +472,11 @@ default.
 
 Hashing does not cover every file under the workspace. Two categories are skipped:
 
-- **`.pi/`** — the conversation working copy. It is durable state, but it is one growing document that
-  syncs to `sessions.history`. It is not snapshotted per version. Hashing it would put a full copy of
-  the conversation in every version. A 5 MB session across 50 versions is 250 MB of near-duplicates.
+- **`.pi/`** — the conversation working copies. They are durable state, but each is one growing
+  document that syncs to its own `sessions.history` row, and none is snapshotted per version. Hashing
+  them would put a full copy of every conversation in every version. A 5 MB session across 50
+  versions is 250 MB of near-duplicates, and a project holds as many sessions as it has been worked
+  in.
 - **Temporary render output** — contact sheets and `inspect_scene` screenshots. These are large and
   can be made again.
 
@@ -493,8 +510,9 @@ The conversation is a `jsonb` column, not a blob.
 
 Pi's session is already a tree, and every branch is in the same document. A rewind is a pointer move
 inside that document, not a restored copy. Therefore there is one conversation document per session
-that grows over time. There are no per-version snapshots. That removes the usual reason to use object
-storage, and `jsonb` adds transactional writes with the version row and SQL over the history.
+that grows over time — a project holds one for each session opened against it. There are no
+per-version snapshots. That removes the usual reason to use object storage, and `jsonb` adds
+transactional writes with the version row and SQL over the history.
 
 **This works only if images are stripped first.** Postgres rewrites an entire `jsonb` value on every
 update. An untouched pi session reaches tens of megabytes of base64, so every save would rewrite every
@@ -518,6 +536,13 @@ version_files(version_id, path, blob_hash, size)
 - There is no `messages` table. `sessions.history` is the pi session document and the source of truth.
   Anything the UI needs for a list, such as a title or a message count, is derived from it. Never
   write the same fact twice.
+- **A project has many sessions, and the version history belongs to the project.** One scene has one
+  past, however many conversations edited it, the same way a repository has one history however many
+  people commit to it. `versions.n` is therefore allocated per project.
+- `versions` carries no `project_id`. Reach the project by joining `sessions.project_id`. The scope is
+  recorded once already, and a second copy is a chance for the two to disagree.
+- `versions.session_id` is provenance, not scope. It answers which conversation made this version,
+  which is the question section 10 asks before it moves anyone between conversations.
 - `versions.entry_id` is the pi session entry at which the version was committed. It makes a rewind a
   branch instead of a restore, and it keeps the two trees aligned.
 - `versions.image_tag` records the container image that built the version. It cannot be added later,
@@ -537,6 +562,25 @@ Rewinding is a second, explicit action. It moves two things together:
 2. A branch to `versions.entry_id` for the conversation.
 
 Preview is cheap only because the GLB is stored. That is a second benefit of the decision in 9.3.
+
+Versions belong to the project, so the version being rewound to was not necessarily made in the
+conversation the person is sitting in. `versions.session_id` records which one made it, and comparing
+it against the current session decides what step 2 means.
+
+| `versions.session_id` | Step 2                                                      |
+| --------------------- | ----------------------------------------------------------- |
+| The current session   | Branch to `entry_id`. Nothing else moves.                   |
+| A different session   | Switch to that conversation, then branch.                   |
+| A session now deleted | Start a new conversation. The workspace still materializes. |
+
+**Warn before either of the last two.** They change which document the person's next message lands
+in, which is a larger change than the rewind they asked for, and nothing on screen would otherwise
+show it happened.
+
+The third row is the only one that loses something. Section 10.1 makes entry IDs permanent for the
+life of a session file, which covers compaction but not deletion, so a version whose conversation is
+gone has a valid manifest and a dead anchor. The scene comes back and the reasoning behind it does
+not. Say so rather than failing the rewind: the files are what invariant 5 protects.
 
 ### 10.1 Compaction does not break the anchor
 
@@ -569,7 +613,7 @@ points, and where the agent process runs.
 | Started by     | `pnpm agent`               | the product                  | the product                 |
 | Transport      | direct call                | `child_process.spawn`        | `sandbox.runCommand`        |
 | `onCommit`     | none                       | `SupabaseCommitHook`         | `SupabaseCommitHook`        |
-| Workspace      | `<agent home>/sessions/…`  | product-chosen path          | `/vercel/sandbox/workspace` |
+| Workspace      | `<agent home>/projects/…`  | product-chosen path          | `/vercel/sandbox/workspace` |
 | Blobs          | none                       | local Supabase Storage       | Supabase Storage            |
 | Metadata       | none                       | local Postgres               | Postgres                    |
 | Conversation   | the file, and nothing else | synced to `sessions.history` | synced, same code           |
@@ -581,7 +625,8 @@ provides Postgres and Storage in containers.
 
 **Mode A has no store at all.** No `onCommit`, therefore no versions, no manifests, and no blobs. It
 keeps a workspace in the agent home (11.2) and nothing else. It answers one question: can the agent
-build the scene?
+build the scene? Its projects are still projects — a directory, and however many conversations have
+been held against it — but with no version history for those conversations to share.
 
 **There is one store implementation.** Do not add a file-backed stand-in for local work. A second
 implementation would have to be maintained, would never be the one that ships, and would drift from
@@ -598,42 +643,93 @@ The entry point is ours. It is not `pi --mode rpc`. It wraps `createStudioAgent(
 protocol in `packages/shared`. Pi's RPC mode is a usable fallback, but the SDK keeps tool
 registration, the build guard, and the commit hook in one process.
 
-In mode A the same entry point is also the caller, so it resolves the workspace path itself. That
-makes `cli.ts` a thin product: it may know about homes, slugs, and sessions. The harness beneath it
-may not.
+In mode A the same entry point is also the caller, so it resolves the workspace and the conversation
+itself. That makes `cli.ts` a thin product: it may know about homes, projects, and sessions. The
+harness beneath it may not.
+
+| Flag               | Resolves                                                                       |
+| ------------------ | ------------------------------------------------------------------------------ |
+| `--workdir <path>` | That path, exactly. Bypasses the home, and appears in no listing.              |
+| `--project <name>` | `<home>/projects/<name>/workspace`, created if it does not exist.              |
+| `--home <parent>`  | The root that `--project` resolves against.                                    |
+| `--session <id>`   | A conversation in `<workdir>/.pi/`. Needs a workspace flag. New one if absent. |
+
+**`--project` is arithmetic; `--session` is a lookup.** A name maps to a path with no search, so
+opening and creating are the same operation and the same name reaches the same scene from any
+checkout. Conversation IDs are pi's, machine-generated into `<timestamp>_<id>.jsonl`, so `--session`
+scans the project's `.pi/` with `SessionManager.list()` and matches an ID or a prefix of one. The
+asymmetry is the point: the axis a person names is addressable, the axis pi names is searchable.
+
+Passing no workspace flag starts a scaffolding flow, in the shape of `npm create` — one prompt at a
+time, arrow keys, a default already selected.
+
+```text
+? What would you like to do?
+  › Open an existing project
+    Create a new project
+
+[open]    ? Project        list <home>/projects/*
+          ? Conversation   › New conversation
+                             <existing, newest first>
+
+[create]  ? Name           validated, and becomes the directory name
+          ? Location       › Default (<home>/projects)
+                             Custom parent directory
+          starts a new conversation
+```
+
+Every branch has a flag that skips it, and a full set of flags skips the flow entirely. Keep that
+true as the flow grows. Modes B and C never reach this code, so a choice that can only be made here
+is a choice the product cannot make. The custom-directory branch is not an exception: it is
+`--project <name> --home <parent>`, which produces the same layout under a different root and stays
+listable. `--workdir` is the only escape from the layout, and the cost of taking it is that nothing
+can enumerate the result.
+
+Pi exports its selector components (`SessionSelectorComponent`, `TreeSelectorComponent`) and
+`SessionManager.list(cwd, sessionDir)`. The conversation picker is reusable as it stands, so this
+flow needs no new dependency.
+
+Fall back to the usage error when stdin is not a TTY. A piped or scripted invocation must fail
+rather than hang on a prompt nobody can answer.
 
 ### 11.2 The agent home
 
 Mode A keeps its state on the machine, not in a repository.
 
 ```text
-~/.studio-agent/            override: --home, or STUDIO_AGENT_HOME
-  sessions/
-    <slug>/
-      workspace/            the agent's directory, same shape as the sandbox
+~/.studio-agent/                    override: --home, or STUDIO_AGENT_HOME
+  projects/
+    <name>/
+      workspace/                    the agent's directory, same shape as the sandbox
         scene.py
         assets/*.py
         scene.glb
-        .pi/session.jsonl   conversation, inside the workspace on purpose
+        .pi/                        conversations, inside the workspace on purpose
+          <timestamp>_<id>.jsonl
+          <timestamp>_<id>.jsonl
 ```
 
 Precedence is `--workdir` (an absolute path, which bypasses the home entirely), then `--home`, then
 `STUDIO_AGENT_HOME`, then the default.
 
-**Sessions are flat, with no namespace per repository.** A coding agent works on your checkout, so it
-must group sessions by project. This agent does not. Its workspace is a scratch directory that it
-owns, and the scene inside it is the project. The repository you launched from is not part of the
-identity of a session, so any session resumes from anywhere.
+**Projects are flat, with no namespace per repository.** A coding agent works on your checkout, so it
+must group its sessions by project. This agent does not need to: its workspace is a scratch directory
+that it owns, and the scene inside it is the project. The repository you launched from is not part of
+the identity of a project, so any project opens from anywhere.
 
-`<slug>` is human-readable, from `--session <slug>`. You retype it every time you resume, and there
-is no session picker to browse instead.
+`<name>` is human-readable, from `--project <name>`, and it is the directory name. Validate it against
+pi's own session-ID rule — `^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$` — before joining it into a
+path. This is the one place a caller-supplied string becomes a filesystem path, and `apps/web` will
+eventually pass one through.
 
 **One home per machine, shared by every checkout and every worktree.** A new Conductor workspace
-reaches every past session with nothing copied into it.
+reaches every past project with nothing copied into it.
 
-The risk that comes with sharing: two workspaces can open the **same** session at once and write the
-same `.pi/session.jsonl`. Different slugs never collide, so this needs a lock rather than separate
-directories. Pi already depends on `proper-lockfile`; confirm what it protects before relying on it.
+The risk that comes with sharing: two processes can open the **same** project at once and write the
+same files. Different names never collide, so this needs a lock rather than separate directories. Pi
+already depends on `proper-lockfile`; confirm what it protects before relying on it. A lock on the
+session file is not sufficient on its own — two sessions in one project hold different session files
+and still write the same `scene.py`.
 
 Resolve the home from the home directory, never from the process working directory. `pnpm agent` runs
 with its working directory set to `apps/agent`, so a relative default lands somewhere surprising and
@@ -641,15 +737,15 @@ stays hidden.
 
 ### 11.3 Image stripping across the modes
 
-Stripping happens where the conversation crosses into durable storage. Mode A has no such crossing,
-so mode A strips nothing. Its session file keeps its images.
+Stripping happens where a conversation crosses into durable storage. Mode A has no such crossing, so
+mode A strips nothing. Its session files keep their images.
 
 Three things make that safe:
 
 - **Token cost is handled elsewhere.** The `context` stub (section 7.3) works on a deep copy before
   every model call. It is independent of storage, so mode A does not re-send old renders either.
 - **The disk cost is small and disposable.** A screenshot is a few hundred kilobytes after base64.
-  Nothing in the agent home is tracked. Delete the session directory to reclaim it.
+  Nothing in the agent home is tracked. Delete the project directory to reclaim it.
 - **The strip code stays exercised.** Mode B syncs to real Postgres, so the path runs during ordinary
   development.
 
@@ -658,11 +754,19 @@ that section 11 forbids.
 
 ### 11.4 Override pi's session directory
 
-Pi writes sessions to `~/.pi/agent/sessions/` by default. That is outside the workspace. The manifest
-would not see it, and a new sandbox would start with no memory.
+Pi writes sessions to `~/.pi/agent/sessions/<encoded-cwd>/` by default, outside the workspace. Two
+things break if they stay there. A new sandbox materializes a workspace and starts with no memory,
+because the conversations did not travel with the files they describe. And pi's own `/new` and
+`/resume` reach across every project on the machine rather than the one in hand.
 
-Set it explicitly, with `SessionManager.open(path)` in the SDK, or with `--session-dir` or
-`PI_CODING_AGENT_SESSION_DIR` on the CLI.
+Set it to `<workdir>/.pi` explicitly. `SessionManager.create(cwd, sessionDir)` and
+`SessionManager.open(path, sessionDir, cwd)` both take it, and `--session-dir` or
+`PI_CODING_AGENT_SESSION_DIR` do the same on the CLI.
+
+Setting it is also what makes pi's session UI correct at no cost. `/resume` lists
+`SessionManager.list(cwd, sessionDir)` against the directory it was given, so it shows exactly the
+conversations belonging to the current project — the same set `--session` searches, reachable without
+restarting.
 
 Set `agentDir` explicitly as well. It holds configuration and not state, but if it is left implicit it
 differs between local and sandbox without warning.
@@ -671,21 +775,30 @@ differs between local and sandbox without warning.
 
 What a resume means depends on the mode.
 
-**Mode A** resumes with `--session <slug>`. The workspace stays on disk in the agent home between
-runs, so there is nothing to restore. Resolve the slug, point `SessionManager` at
-`<workdir>/.pi/session.jsonl`, and start. The same slug from any checkout reaches the same session.
+**Mode A** has nothing to restore. The workspace stays on disk in the agent home between runs, so
+`--project <name>` resolves to a directory that is already correct, and the same name from any
+checkout reaches the same scene. What resume selects is the conversation: `--session <id>`, the
+picker, or `/resume` once pi is running. Without one the run opens a new conversation against the
+same scene, which is the common case and needs no flag.
 
 **Modes B and C** must restore two things, because the workspace may be gone:
 
 ```text
-1. Read the latest manifest from the store.
+1. Read the project's newest manifest from the store.
 2. Materialize the workspace from blobs.   ← product step, BEFORE pi starts
-3. Point SessionManager at <workdir>/.pi/session.jsonl.
-4. Call createAgentSession().
+3. Write the chosen session's history to <workdir>/.pi/, or write nothing
+     for a new conversation.
+4. Point SessionManager at that file, with sessionDir = <workdir>/.pi.
+5. Call createAgentSession().
 ```
 
 The order is required. Pi's tools resolve paths against `cwd` when they are constructed. If you
 materialize after pi starts, the agent reasons about files that changed under it.
+
+Step 3 has no counterpart in mode A. There the conversations never left the workspace; here
+`sessions.history` is the durable copy and only the one being resumed needs to come back. Restoring
+every session of a project would be work nobody asked for, and the stripped images (9.4) mean the
+restored file is not byte-identical to the one that was written anyway.
 
 Steps 1 and 2 are identical in B and C. Only the connection string differs. Running mode B regularly
 is what keeps that path working.
@@ -828,7 +941,10 @@ may need its own repository.
 
 ## 16. Open questions
 
-- Whether a project has one session or many.
+- Locking a project while two of its sessions run at once. Both write `scene.py`, and both commit
+  versions that need an `n`. Section 11.2 notes that a lock on the session file does not cover this.
+- Whether the conversation a rewind creates in section 10's third case should be told what it
+  inherited. It opens onto a workspace with a past it cannot see.
 - The parameters of `inspect_scene`, limited by having to fit in one line of stub text.
 - Whether to keep compaction on. It is on by default (`compaction.enabled`, `keepRecentTokens: 20000`)
   and it is safe for rewind, but it summarizes away detail the agent may need on a long scene. Turning

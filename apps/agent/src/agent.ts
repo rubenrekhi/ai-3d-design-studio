@@ -12,13 +12,13 @@ import {
 export interface StudioAgentOptions {
   /**
    * Absolute path to the workspace. The caller resolves it; the harness never
-   * infers it from the process. The conversation lives at `<workdir>/.pi/session.jsonl`.
+   * infers it from the process. Conversations live in `<workdir>/.pi`.
    */
   workdir: string
 }
 
 /**
- * The harness: pi, wired to keep its conversation inside the workspace.
+ * The harness: pi, wired to keep its conversations inside the workspace.
  *
  * Returns pi's runtime rather than a bare session because the interactive TUI
  * needs it; product callers read `runtime.session`. Later phases add the system
@@ -28,10 +28,13 @@ export async function createStudioAgent(
   opts: StudioAgentOptions,
 ): Promise<AgentSessionRuntime> {
   const agentDir = getAgentDir()
-  const sessionManager = SessionManager.open(
-    join(opts.workdir, '.pi', 'session.jsonl'),
-    undefined,
+
+  // Pi otherwise writes to `~/.pi/agent/sessions/<encoded-cwd>/`, which puts the
+  // conversation outside the workspace and points `/resume` at every project on
+  // the machine instead of this one.
+  const sessionManager = SessionManager.create(
     opts.workdir,
+    join(opts.workdir, '.pi'),
   )
 
   const createRuntime: CreateAgentSessionRuntimeFactory = async ({
