@@ -72,9 +72,9 @@ steps itself. Either way these hold:
 - No attribution lines in commits. Never force-push a branch that already exists on the remote.
 - Report what was done, including the cut chosen for a stack, rather than asking before doing it.
 
-One commit is one structured change; one PR is one commit; a feature is a stack of them read bottom
-to top. Anything longer than a single commit ships as a stack — a lone PR is the 1-of-1 case, not a
-different shape. Don't over-split: a layer that can't carry a real `<type>(<scope>): <summary>`, or
+One PR is one structured change, in as many commits as it takes; a feature whose parts land in a
+fixed order is a stack of those read bottom to top. Split into a stack when the layers are separable
+and each is worth reviewing alone, not merely because the work ran to more than one commit. Don't over-split: a layer that can't carry a real `<type>(<scope>): <summary>`, or
 that only makes sense once you read the layer above it, belongs to that layer instead.
 
 Cut bottom to top along the seams that already exist: `packages/shared` schemas → `apps/agent`
