@@ -58,9 +58,6 @@ Do not resolve paths relative to the process. `pnpm agent` runs with the working
 `apps/agent`, not the repository root, so a relative default lands somewhere surprising and stays
 hidden.
 
-Selecting a conversation from the command line is P9's `--session`. Until then every run opens a new
-one and `/resume` reaches the rest, which is enough to prove the override.
-
 **Why first.** If pi's SDK does not behave as documented, every later phase rests on it. Find out in
 half a day.
 
@@ -176,12 +173,16 @@ run-1 images are stubs while run-2 images are intact. Compare token counts.
 
 ### P9 — protocol and CLI · ~1 day
 
-- [ ] `--session <id>` — resolve against `<workdir>/.pi/` with `SessionManager.list()`, matching an ID
-      or a prefix. Absent means a new conversation
-- [ ] Reject `--session` without `--project` or `--workdir`
-- [ ] Pass the resolved file to `createStudioAgent({ workdir, sessionFile })`
-- [ ] The no-flag scaffolding flow, on pi's exported selector components
-- [ ] Fall back to the usage error when stdin is not a TTY
+The command line half depends only on P1 and shipped with it. The protocol half is what waits for
+P7: the events worth emitting are tool calls, build results, and commits, so writing the schema
+before those exist means guessing at shapes and revising `packages/shared` once per phase.
+
+- [x] `--session <id>` — resolve against `<workdir>/.pi/` with `SessionManager.list()`, matching an ID
+      or a prefix, and reporting the candidates when a prefix is ambiguous
+- [x] Reject `--session` without `--project` or `--workdir`
+- [x] Pass the resolved file to `createStudioAgent({ workdir, sessionFile })`
+- [x] The no-flag scaffolding flow
+- [x] Fall back to the usage error when stdin is not a TTY
 - [ ] Emit JSONL events from `session.subscribe()`
 - [ ] Zod schemas in `packages/shared`
 
