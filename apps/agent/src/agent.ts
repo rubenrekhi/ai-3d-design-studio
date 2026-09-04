@@ -15,6 +15,12 @@ export interface StudioAgentOptions {
    * infers it from the process. Conversations live in `<workdir>/.pi`.
    */
   workdir: string
+  /**
+   * Conversation to continue, as a path the caller already resolved. Absent
+   * starts a new one. Finding a file from an id is a listing and a prefix
+   * match, which is the caller's job for the same reason `workdir` is.
+   */
+  sessionFile?: string
 }
 
 /**
@@ -32,10 +38,11 @@ export async function createStudioAgent(
   // Pi otherwise writes to `~/.pi/agent/sessions/<encoded-cwd>/`, which puts the
   // conversation outside the workspace and points `/resume` at every project on
   // the machine instead of this one.
-  const sessionManager = SessionManager.create(
-    opts.workdir,
-    join(opts.workdir, '.pi'),
-  )
+  const sessionDir = join(opts.workdir, '.pi')
+  const sessionManager =
+    opts.sessionFile === undefined
+      ? SessionManager.create(opts.workdir, sessionDir)
+      : SessionManager.open(opts.sessionFile, sessionDir, opts.workdir)
 
   const createRuntime: CreateAgentSessionRuntimeFactory = async ({
     cwd,

@@ -678,6 +678,11 @@ time, arrow keys, a default already selected.
           starts a new conversation
 ```
 
+The first prompt always appears, even on a machine with no projects yet, where it offers only the
+create branch. Skipping straight to "Project name" would drop a first-time user into a bare text
+prompt with nothing on screen saying what was being asked or that opening is ever possible, and it
+would make the flow change shape according to state the person cannot see.
+
 Every branch has a flag that skips it, and a full set of flags skips the flow entirely. Keep that
 true as the flow grows. Modes B and C never reach this code, so a choice that can only be made here
 is a choice the product cannot make. The custom-directory branch is not an exception: it is
@@ -685,9 +690,18 @@ is a choice the product cannot make. The custom-directory branch is not an excep
 listable. `--workdir` is the only escape from the layout, and the cost of taking it is that nothing
 can enumerate the result.
 
-Pi exports its selector components (`SessionSelectorComponent`, `TreeSelectorComponent`) and
-`SessionManager.list(cwd, sessionDir)`. The conversation picker is reusable as it stands, so this
-flow needs no new dependency.
+`SessionManager.list(cwd, sessionDir)` supplies the conversations. Pi's own selector components are
+not reusable here: they extend `Container` from `@earendil-works/pi-tui`, which is a transitive
+dependency and therefore absent from `apps/agent/node_modules` by 15.2, and pi exports no way to host
+a component outside its own event loop. The flow uses a small local selector rather than either
+promoting `pi-tui` to a direct dependency or coupling to pi's internal component API across pinned
+versions.
+
+**Report an ambiguous `--session`, never resolve it.** Pi's ids are UUIDv7, so their leading
+characters are a millisecond timestamp and two conversations started in the same project share a long
+prefix. Match an exact id first, then a prefix, and fail with the candidates listed when a prefix
+matches more than one. For the same reason a picker must show the shortest prefix that is unambiguous
+within the project, so what is on screen is always something `--session` accepts.
 
 Fall back to the usage error when stdin is not a TTY. A piped or scripted invocation must fail
 rather than hang on a prompt nobody can answer.
