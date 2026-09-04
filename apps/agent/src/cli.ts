@@ -8,7 +8,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
 import { createStudioAgent } from './agent'
-import { select, text } from './prompt'
+import { select, text } from './ask'
 
 const USAGE =
   'usage: studio-agent [--workdir <path> | --project <name> [--home <path>]] [--session <id>]'
