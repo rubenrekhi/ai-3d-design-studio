@@ -265,20 +265,43 @@ Nothing depends on this. It is the one phase the product could ship without, and
 P4 built the half the agent already uses alone.
 
 - [ ] A `spawn_asset_builder` tool registered by `studioExtension`
-- [ ] Build subagents in-process, never as a spawned `pi`
-- [ ] A narrower asset-builder prompt and tool set
-- [ ] `executionMode: 'parallel'` on the tool, so several assets are shaped at once
+- [ ] One asset-builder agent per asset, each with its own `assets/<name>/` cwd
+- [ ] In-process by default, on a nested `createAgentSession()`
+- [ ] A concurrency cap, and `executionMode: 'parallel'` on the tool
+- [ ] The parent assembles: it places what the children built
 
 **Why it waits for P5 and P7.** Asset modules multiply the ways a scene can break, and the build
 guard is what makes invariant 7 true. Subagents also sit inside one run, so P7 still sees one user
 message and writes one version — that composes only once P7 exists to check it against.
 
-**In-process is not a preference.** Pi's own `subagent/` example spawns a separate `pi` process per
-task, which would get pi's default prompt and tools rather than ours — an agent outside the harness,
-with no `run_blender` and no build guard. Build them on `createAgentSessionFromServices` with
-`SessionManager.inMemory(workdir)` instead, an asset-builder prompt, and a tool set of
-`read`/`write`/`edit` plus `preview_asset`. No `run_blender`: a subagent has no business building the
-whole scene.
+**Isolation comes from a separate message list, not a separate process.** A nested
+`createAgentSession()` already has its own system prompt, tool set, model, and cwd, which is the
+whole of what a subagent needs. Pi supports both forms and its own `subagent/` example happens to
+spawn a process, but that is not what buys the isolation.
+
+**In-process is the default, and it is a preference rather than a rule.** The child needs the tools
+the parent already registered, and handing over a tool object beats packaging an extension for each
+child to load. What a subprocess buys instead is fault isolation: an OOM in a child cannot take the
+parent with it, and abort is a kill signal rather than something the child has to cooperate with.
+Reach for it if children turn out to die badly.
+
+**The tool set is the parent's objects, minus what a child has no business touching.** Which side of
+that line `run_blender` falls on is open, and the cwd may settle it: a child working in
+`assets/<name>/` cannot reach the real `scene.py` anyway, so the tool is either harmless there or
+useful, depending on whether an asset directory gets a `scene.py` of its own.
+
+**The cwd per asset is a seam with P4's asset contract.** P4 ships flat `assets/<name>.py` modules.
+A child rooted at `assets/<name>/` implies a package instead. `importlib.import_module` resolves
+either, so `preview_asset`'s import already works both ways; only its existence check is
+module-shaped and would need to accept `assets/<name>/__init__.py` too.
+
+**The limit is CPU, not architecture.** Blender spawns a process either way, so fan-out is bounded by
+the sandbox's cores rather than by how the agents are hosted. Pi's own example caps at 4 concurrent;
+start there.
+
+**Parallel writes are safe by construction.** Each child owns its own directory, and the commit hook
+diffs the whole workdir at settle, so it captures the union of what every child wrote without any of
+them coordinating.
 
 **Why it is worth doing at all.** 7.1's problem, from the other end. A subagent's dozen contact
 sheets never enter the parent's context; the parent gets back one line naming the module and its
