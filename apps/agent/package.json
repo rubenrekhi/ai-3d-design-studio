@@ -8,9 +8,11 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/agent.js"
+    "build": "esbuild src/cli.ts --bundle --platform=node --format=esm --outfile=dist/agent.js",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.83.0"
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@repo/shared": "workspace:*"
   }
 }
