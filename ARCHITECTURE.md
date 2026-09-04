@@ -248,6 +248,16 @@ run, and it cannot guarantee that through a tool it does not control.
 This is for development only. The product UI is the Next.js app, which reads `session.subscribe()`.
 Make no product decision to suit the terminal UI.
 
+Pi's startup banner is quieted, because it advertises pi rather than this agent and its update notice
+points at `pi update`, which cannot move a version we pin exactly. Two levers, both in `cli.ts` since
+the TUI is a mode A concern: `PI_SKIP_VERSION_CHECK` for the notice, and `quietStartup` seeded once
+into `<workdir>/.pi/settings.json` for the banner. Pi merges project settings over global ones, so
+this reaches our workspaces without touching any other pi on the machine, and the file is the
+person's to edit afterwards.
+
+Do not silence pi's warnings the same way. The banner is branding; a warning about billing or a
+missing model is information, and `warnings.anthropicExtraUsage` belongs to whoever is paying.
+
 ---
 
 ## 6. The build guard
