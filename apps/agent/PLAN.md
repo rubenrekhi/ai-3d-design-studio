@@ -195,12 +195,27 @@ something trivial such as "say hi", then assert:
 
 ### P6 — agent image · ~1 day · parallel with P5
 
-- [ ] Dockerfile with Blender baked in
-- [ ] Build context at the repo root, so `packages/shared` is present as real files
-- [ ] esbuild bundles to a single `dist/agent.js`
+- [x] Dockerfile with Blender baked in
+- [x] Build context at the repo root, so `packages/shared` is present as real files
+- [x] esbuild bundles to a single `dist/agent.js`
 
-**Verify.** `docker run --rm agent:dev blender --version`, then run the bundled agent against a
-mounted workdir and confirm a build works inside the container.
+**Decided.**
+
+- **Blender 4.5.11**, the version P2 verified against, pinned by version and checked against its
+  published sha256. Blender ships Linux builds for x64 only, so the runtime stage is amd64 while the
+  download and bundle stages run on the build host — nothing in either is executed for the target.
+- **The bundle needs a `createRequire` banner.** Pi's dependencies are largely CommonJS, and esbuild's
+  ESM output leaves `require`, `__dirname`, and `__filename` free. Without it the bundle throws on its
+  first import.
+- **The bundle ships pi's run-time assets too.** `dist/` holds `agent.js`, `photon_rs_bg.wasm` for
+  photon-node, and `pi/` for everything pi reads from its own package directory — themes above all,
+  which `InteractiveMode` loads in its constructor. The banner points `PI_PACKAGE_DIR` at it instead
+  of letting pi search. Every one of these fails quietly or fatally, and none is visible to esbuild.
+- **`fd` and `ripgrep` are installed in the image.** Pi downloads them from GitHub on first run
+  otherwise, which is a sandbox reaching out to the network to finish installing itself.
+
+**Verify.** `pnpm agent:image`, then `docker run --rm agent:dev blender --version`, then run the
+bundled agent against a mounted workdir and confirm a build works inside the container.
 
 ---
 

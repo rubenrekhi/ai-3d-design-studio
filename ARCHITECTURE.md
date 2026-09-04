@@ -864,8 +864,12 @@ is what keeps that path working.
 ## 12. Sandbox delivery
 
 The agent ships as a custom OCI image in the Vercel Container Registry. Build it with
-`docker buildx --platform linux/amd64`. Reference it as `Sandbox.create({ image: 'agent:v1' })`.
-Blender and the toolchain are in the image. Nothing installs at run time.
+`docker buildx --platform linux/amd64`, which is also the only platform Blender publishes Linux
+builds for. Reference it as `Sandbox.create({ image: 'agent:v1' })`. Blender and the toolchain are in
+the image, the tarball pinned by version and checked against its published sha256. Nothing installs
+at run time, and `BLENDER_PATH` points at the binary so nothing searches for it either. `fd` and
+`ripgrep` are installed for that same reason: pi downloads them from GitHub on first run when PATH
+holds neither.
 
 Git is not how the agent arrives. A git clone would put a git credential inside an untrusted VM.
 Cloning stays available later for a user's own asset repository.
@@ -985,7 +989,7 @@ Their production runtimes are independent:
 | -------------------- | ---------------------------------------------------- | ---------- |
 | Development machine  | root `.nvmrc`                                        | `v24.19.0` |
 | `apps/web` in prod   | Vercel project setting, overridden by `engines.node` | 24.x       |
-| `apps/agent` in prod | `FROM node:XX` in its Dockerfile                     | —          |
+| `apps/agent` in prod | `FROM node:XX` in its Dockerfile                     | 24.x       |
 
 Declare `engines` in every `package.json`, so that a mismatch fails loudly.
 
