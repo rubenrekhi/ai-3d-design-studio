@@ -18,6 +18,7 @@
     "web": "pnpm --filter @repo/web dev",
     "agent": "pnpm --filter @repo/agent dev",
     "build": "pnpm -r build",
+    "agent:image": "docker buildx build --platform linux/amd64 -f apps/agent/Dockerfile -t agent:dev --load .",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "format": "prettier --write ."
   },
