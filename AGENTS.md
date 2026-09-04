@@ -55,8 +55,8 @@ If code needs a comment to be understood, first try fixing the naming or structu
 - **pnpm** workspace, Node **24.x** (`nvm use` reads `.nvmrc`). Corepack is deliberately not used.
 - `.nvmrc` pins the exact dev version; `engines.node` uses the `24.x` range because Vercel rolls
   minors itself and ignores `.nvmrc`.
-- Run everything from the repo root: `pnpm web` (Next dev server), `pnpm agent` (harness in watch
-  mode), `pnpm build`, `pnpm typecheck`, `pnpm format`.
+- Run everything from the repo root: `pnpm web` (Next dev server), `pnpm agent` (the harness as an
+  interactive terminal agent), `pnpm build`, `pnpm typecheck`, `pnpm format`.
 
 ## Shipping work
 

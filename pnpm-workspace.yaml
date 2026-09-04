@@ -3,6 +3,8 @@ packages:
   - 'packages/*'
 
 allowBuilds:
+  '@google/genai': false
   esbuild: true
+  protobufjs: false
   sharp: false
   unrs-resolver: false
