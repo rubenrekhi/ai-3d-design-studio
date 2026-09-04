@@ -114,8 +114,8 @@ Rules:
 The runtime is [pi](https://github.com/earendil-works/pi), package
 `@earendil-works/pi-coding-agent`. We use its SDK. We do not start its CLI as a subprocess.
 
-`apps/agent` supplies a system prompt, three tools, and one extension. It does not implement an agent
-loop.
+`apps/agent` supplies a system prompt, three tools, and one extension. It does not implement an
+agent loop.
 
 ### 5.1 What pi gives us
 
@@ -189,7 +189,7 @@ export async function createStudioAgent(opts: {
       services,
       sessionManager,
       model: opts.model,
-      customTools: [runBlender, inspectScene, previewAsset],
+      customTools: [runBlenderTool, inspectSceneTool, previewAssetTool],
     })
     return { ...created, services, diagnostics: services.diagnostics }
   }
@@ -225,6 +225,10 @@ The product reads events with `runtime.session.subscribe()`. It intercepts tool 
 
 `run_blender` is built into the harness. The harness must guarantee a working build at the end of a
 run, and it cannot guarantee that through a tool it does not control.
+
+For the same reason the tool list is an allowlist and `bash` is not on it. Pi's `read`, `write`,
+`edit`, `ls`, `find`, and `grep` cover the work; `bash` is the one tool that would let the model run
+Blender itself, out of the harness's sight, and take the guarantee with it.
 
 ### 5.5 Rules that protect the boundary
 
@@ -303,7 +307,8 @@ request for the life of the session.
 it just built. After the run settles, and before the next user message, each render becomes a stub:
 
 ```text
-[render — scene.glb from above at v7. Re-run inspect_scene to look again.]
+[render — the whole scene in scene.glb at azimuth 45°, elevation 25°. Re-run inspect_scene to look
+again.]
 ```
 
 The agent keeps the reasoning trail. It knows that it looked, and at what. It does not pay for the
@@ -335,13 +340,36 @@ The agent can always get a new image. `inspect_scene` takes a camera position, a
 framing. It returns a screenshot of that view.
 
 Its output is never permanent in context. That is the intent: a cheap repeated tool call is better
-than a permanent image in the context window.
-
-Its parameters are not decided yet. Two constraints are decided:
+than a permanent image in the context window. Two constraints follow, and both are met by the
+parameters below:
 
 - It must be callable again, not remembered.
 - Its parameters must fit in the stub text. The stub is the agent's only remaining handle on a view it
   can no longer see.
+
+| Parameter   | Meaning                                                                   |
+| ----------- | ------------------------------------------------------------------------- |
+| `azimuth`   | Degrees around the scene. 0 front, 90 right, 180 back, 270 left.          |
+| `elevation` | Degrees above the horizon. 0 eye level, 90 straight down, negative below. |
+| `framing`   | An object name, or `"scene"` for everything.                              |
+
+The camera orbits whatever it frames and always points at it, and its distance is computed to fit
+that object's bounding sphere. The agent chooses a direction rather than a position, which is the
+only form it can choose well: it has never seen the scene, so it does not know where anything is in
+world coordinates, and a distance would need a scale it has no way to guess.
+
+`preview_asset` is the same machinery pointed at one asset. It takes a name, imports
+`assets/<name>.py`, calls its `build()` in an empty scene, exports that, and returns the four fixed
+views of the table above as four image blocks in one result at 400×300 — the same token cost as one
+800×600 image. It answers "is this asset well made"; `inspect_scene(framing: …)` answers "does it sit
+right in the scene". Its stub needs only the name and the view's label, so it fits a line easily.
+
+`inspect_scene` renders `scene.glb` and not the live Blender scene, at 800×600 through the Workbench
+engine. Rendering the export is what makes 7.5's rule hold: the image is the stored GLB seen from
+three numbers, so the browser can rebuild it exactly and nothing has to be saved. Workbench keeps it
+that way, since it shades plain geometry with material colour and needs no lights of its own — a
+Cycles pass with lighting that lives only in the `.blend` would not be derivable from anything we
+store.
 
 ### 7.5 Images are never stored
 
@@ -352,8 +380,8 @@ from a position, and the browser already does that in the Three.js viewer. Savin
 would save something we can rebuild from something we already save. Section 9.3 forbids that.
 
 This is also why the stub must carry the tool's parameters. The stub is not only a placeholder for
-the model. It is the recipe. `[render — scene.glb from above at v7]` plus the stored GLB for v7
-rebuilds the exact view, in the browser, on demand.
+the model. It is the recipe. `[render — the whole scene in scene.glb at azimuth 45°, elevation
+25°]` plus the GLB stored for that version rebuilds the exact view, in the browser, on demand.
 
 Two mechanisms, at two different points:
 
@@ -973,7 +1001,6 @@ may need its own repository.
   versions that need an `n`. Section 11.2 notes that a lock on the session file does not cover this.
 - Whether the conversation a rewind creates in section 10's third case should be told what it
   inherited. It opens onto a workspace with a past it cannot see.
-- The parameters of `inspect_scene`, limited by having to fit in one line of stub text.
 - Whether to keep compaction on. It is on by default (`compaction.enabled`, `keepRecentTokens: 20000`)
   and it is safe for rewind, but it summarizes away detail the agent may need on a long scene. Turning
   it off means reaching the context limit instead.

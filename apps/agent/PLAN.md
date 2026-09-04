@@ -9,9 +9,9 @@ Scope: `apps/agent` only. Nothing here needs `apps/web` to exist.
 ```text
 P1 pi wire-up ──┐
                 ├──→ P4 tools ──→ P5 build guard ──┬──→ P7 commit hook ──→ P9 protocol
-P2 Blender ─────┘                                  └──→ P8 image lifecycle
-     │
-     └──→ P6 agent image
+P2 Blender ─────┘                                  └──→ P8 image lifecycle       │
+     │                                                                           │
+     └──→ P6 agent image                                       P10 subagents ←───┘
 
 P3 hashing ────────────────────────────────────────────→ P7
 ```
@@ -23,6 +23,7 @@ P3 hashing ───────────────────────
 | 3    | P5, P6     | Yes. P6 needs only P2.             |
 | 4    | P7, P8     | Yes, but both edit `extension.ts`. |
 | 5    | P9         | —                                  |
+| 6    | P10        | — Optional. Nothing depends on it. |
 
 Wave 1 is the one worth splitting across parallel workspaces. P1 touches pi and no Blender, P2
 touches Blender and no pi, P3 touches neither.
@@ -111,14 +112,60 @@ two lists ever drift, a reconcile erases the conversation.
 
 ### P4 — tools and the first real loop · ~1 day
 
-- [ ] `run_blender` — wrap P2 with `defineTool`
-- [ ] `inspect_scene` — camera position, angle, framing → render → image content
-- [ ] Keep the render plain geometry, not Cycles, so output stays rebuildable from the GLB
-- [ ] A minimal system prompt. Do not polish it yet.
+- [x] `run_blender` — wrap P2 with `defineTool`
+- [x] `inspect_scene` — camera position, angle, framing → render → image content
+- [x] `preview_asset` — build one `assets/<name>.py` alone → contact sheet
+- [x] Keep the render plain geometry, not Cycles, so output stays rebuildable from the GLB
+- [x] A minimal system prompt. Do not polish it yet.
+
+**Decided.**
+
+- **`preview_asset` builds one asset module alone and shows it from four sides.** It answers "is
+  this well made"; `inspect_scene(framing: "Chair")` answers "does this sit right in the room". The
+  sheet is four image blocks in one result at 400×300, not a composited grid —
+  `AgentToolResult.content` is `(TextContent | ImageContent)[]`, so that costs the same ~640 tokens
+  and needs no pixel work.
+- **The asset contract is `build()`, and the harness supplies the rest.** `assets/<name>.py` defines
+  `build()`, callable with no arguments, which creates objects in whatever scene is open and neither
+  resets nor exports. The preview script imports the module, calls it in an empty scene, exports,
+  then renders that export — so the agent judges what `scene.py` will actually get. An
+  `if __name__ == "__main__"` block in every asset would have been boilerplate the model must
+  remember, with a scratch export path hardcoded in its own source.
+- **`scene.py` needs `sys.path.insert(0, dirname(abspath(__file__)))`.** Verified on 4.5.11: Blender
+  puts neither the cwd nor the script's directory on `sys.path`, so without it an `assets` import
+  fails with `No module named 'assets'`. The prompt teaches it; the preview script does it itself.
+- **`__pycache__` is excluded at any depth.** Importing an asset makes Python write bytecode beside
+  it, which is derivable and churns on every build. Blender ignores `PYTHONDONTWRITEBYTECODE`
+  (it sets `Py_IgnoreEnvironmentFlag`), so the manifest is the only lever. That split
+  `EXCLUDED_ROOT_DIRS` from `EXCLUDED_DIRS` in `packages/shared`.
+- **`inspect_scene` takes `azimuth`, `elevation`, and `framing`.** The camera orbits what it frames,
+  points at it, and computes its own distance from the bounding sphere, so the agent picks a
+  direction rather than a position — the only form it can pick well, never having seen the scene.
+  All three fit in one line of stub text. `ARCHITECTURE.md` 7.4 has the table.
+- **It renders `scene.glb`, not the live scene**, at 800×600 through Workbench. That is what keeps
+  7.5 true: the image is the stored GLB seen from three numbers, so the browser rebuilds it and
+  nothing is saved. Workbench needs no lights of its own, and its material colours come through the
+  glTF import intact.
+- **The render script is written into `.renders/` on each call**, because the agent bundles to one
+  file and Blender needs a real path. The directory is already excluded from manifests, so the
+  script, its parameters, and the PNG are never committed.
+- **Scratch files are named for the tool call and deleted afterwards.** Fixed names would have two
+  concurrent renders read each other's parameters, and the failure is silent — both calls return one
+  call's image rather than erroring. The script finds its parameters by swapping its own extension,
+  so it stays a constant. Nothing is parallel yet; P4 is where the collision would be built in.
+  Only the GLB the preview built is scratch: on the `inspect_scene` path it is `scene.glb`, which the
+  manifest tracks and the rest of the run depends on.
+- **No `bash`.** The tool list is an allowlist. `bash` is the one tool that would let the model run
+  Blender out of the harness's sight and take invariant 7 with it.
+- **`run_blender` takes no parameters.** `scene.py` is the scene, and a script parameter would build
+  GLBs at paths `inspect_scene` cannot look at.
 
 **Verify.** "Make a red cube on a plane" produces `scene.glb`. Then break it deliberately: point
 `BLENDER_PATH` at nothing and confirm the tool returns an error the model can read, rather than
 crashing the process.
+
+For the asset half, ask for something built from a module and confirm the workspace hashes to
+`scene.py`, `scene.glb`, and `assets/*.py` — and nothing else.
 
 **Milestone.** This is a working 3D coding agent in a terminal. Everything after it is about
 connecting to the product.
@@ -210,6 +257,39 @@ lists both. `ARCHITECTURE.md` 11.1 has the full flag table and the flow.
 
 ---
 
+## Wave 6
+
+### P10 — asset subagents · ~1 day · optional
+
+Nothing depends on this. It is the one phase the product could ship without, and it is here because
+P4 built the half the agent already uses alone.
+
+- [ ] A `spawn_asset_builder` tool registered by `studioExtension`
+- [ ] Build subagents in-process, never as a spawned `pi`
+- [ ] A narrower asset-builder prompt and tool set
+- [ ] `executionMode: 'parallel'` on the tool, so several assets are shaped at once
+
+**Why it waits for P5 and P7.** Asset modules multiply the ways a scene can break, and the build
+guard is what makes invariant 7 true. Subagents also sit inside one run, so P7 still sees one user
+message and writes one version — that composes only once P7 exists to check it against.
+
+**In-process is not a preference.** Pi's own `subagent/` example spawns a separate `pi` process per
+task, which would get pi's default prompt and tools rather than ours — an agent outside the harness,
+with no `run_blender` and no build guard. Build them on `createAgentSessionFromServices` with
+`SessionManager.inMemory(workdir)` instead, an asset-builder prompt, and a tool set of
+`read`/`write`/`edit` plus `preview_asset`. No `run_blender`: a subagent has no business building the
+whole scene.
+
+**Why it is worth doing at all.** 7.1's problem, from the other end. A subagent's dozen contact
+sheets never enter the parent's context; the parent gets back one line naming the module and its
+`build()` signature, and pays for that instead of the pixels.
+
+**Verify.** Two assets built at once, then assert the parent's conversation holds no image from
+either, and that `.renders/` is empty afterwards. The scratch-file naming P4 settled is what makes
+the parallel case safe; this is the phase that first depends on it.
+
+---
+
 ## Decisions this plan will force
 
 **`onCommit`'s signature is incomplete** (P7). `ARCHITECTURE.md` gives `(changed, workdir)`, but
@@ -222,10 +302,23 @@ the harness should strip and pass the conversation through. Likely becomes
 the two must never drift. `packages/shared` is schemas and types only, but a `const` array of globs
 is data rather than runtime logic, so it probably belongs there. Decide deliberately.
 
-**`preview_asset` is unspecified** (P4). It appears in the tools list and the boundary table in
-`ARCHITECTURE.md` and is defined nowhere. Either specify it or drop it from v1.
-
 ## Deferred
 
-Subagents, compaction tuning, TUI customization, VCR push. None block the critical path, and the
-first two are cheaper to decide after watching the agent run for a while.
+Compaction tuning, TUI customization, VCR push. None block the critical path, and the first is
+cheaper to decide after watching the agent run for a while.
+
+### Asset subagents
+
+`preview_asset` shipped in P4, which is the half of this the agent uses alone. Parallel subagents
+building an asset each is the other half, and it waits for P5 and P7: asset modules multiply the ways
+a scene can break, and the build guard is what makes invariant 7 true.
+
+- **They must be built in-process.** Pi's own `subagent/` example spawns a separate `pi` process per
+  task, which would get pi's default prompt and tools rather than ours — an agent outside the
+  harness. Build them on `createAgentSessionFromServices` with `SessionManager.inMemory(workdir)`, an
+  asset-builder prompt, and a tool set of `read`/`write`/`edit` plus `preview_asset` — no
+  `run_blender`, since a subagent has no business building the whole scene.
+- **The payoff is 7.1's problem.** A subagent's dozen contact sheets never enter the parent's
+  context; it gets back one line naming the module and its `build()` signature.
+- **Turning on `executionMode: 'parallel'` is what makes this real**, and the scratch-file naming
+  P4 settled is what makes that safe.
