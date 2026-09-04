@@ -489,6 +489,10 @@ Hashing does not cover every file under the workspace. Two categories are skippe
   in.
 - **Temporary render output** — contact sheets and `inspect_scene` screenshots. These are large and
   can be made again.
+- **`__pycache__/`, at any depth** — Python writes bytecode beside every module it imports, so one
+  appears in `assets/` the moment `scene.py` imports an asset. It is derivable and it churns on every
+  build. Blender ignores `PYTHONDONTWRITEBYTECODE`, so there is no way to stop it being written; the
+  manifest is the only lever. This is the one entry matched at any depth rather than at the root.
 
 This is why a rewind moves two things. `materialize()` restores files. A branch to
 `versions.entry_id` restores the conversation. Neither can do the other's work.
