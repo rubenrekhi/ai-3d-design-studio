@@ -119,13 +119,12 @@ function checkName(name: string): string | undefined {
 
 async function chooseWorkspace(home: string): Promise<string> {
   const projects = listProjects(home)
-  const action =
-    projects.length === 0
-      ? 'create'
-      : await select('What would you like to do?', [
-          { label: 'Open an existing project', value: 'open' as const },
-          { label: 'Create a new project', value: 'create' as const },
-        ])
+  const action = await select('What would you like to do?', [
+    ...(projects.length === 0
+      ? []
+      : [{ label: 'Open an existing project', value: 'open' as const }]),
+    { label: 'Create a new project', value: 'create' as const },
+  ])
 
   if (action === 'open') {
     const name = await select(

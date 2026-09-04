@@ -678,6 +678,11 @@ time, arrow keys, a default already selected.
           starts a new conversation
 ```
 
+The first prompt always appears, even on a machine with no projects yet, where it offers only the
+create branch. Skipping straight to "Project name" would drop a first-time user into a bare text
+prompt with nothing on screen saying what was being asked or that opening is ever possible, and it
+would make the flow change shape according to state the person cannot see.
+
 Every branch has a flag that skips it, and a full set of flags skips the flow entirely. Keep that
 true as the flow grows. Modes B and C never reach this code, so a choice that can only be made here
 is a choice the product cannot make. The custom-directory branch is not an exception: it is
