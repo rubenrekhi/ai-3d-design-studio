@@ -9,7 +9,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
 import { SCENE_BUILDER_PROMPT } from './prompt'
-import { inspectSceneTool, runBlenderTool } from './tools'
+import { inspectSceneTool, previewAssetTool, runBlenderTool } from './tools'
 
 /**
  * `bash` is deliberately absent. The harness has to be able to promise that a
@@ -26,6 +26,7 @@ const STUDIO_TOOLS = [
   'grep',
   runBlenderTool.name,
   inspectSceneTool.name,
+  previewAssetTool.name,
 ]
 
 export interface StudioAgentOptions {
@@ -79,7 +80,7 @@ export async function createStudioAgent(
       sessionManager,
       sessionStartEvent,
       tools: STUDIO_TOOLS,
-      customTools: [runBlenderTool, inspectSceneTool],
+      customTools: [runBlenderTool, inspectSceneTool, previewAssetTool],
     })
     return { ...created, services, diagnostics: services.diagnostics }
   }
