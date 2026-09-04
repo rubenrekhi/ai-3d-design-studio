@@ -886,8 +886,22 @@ their build and emit something self-contained. No symlink ever ships.
 
 **The agent.** Its Dockerfile uses the repository root as the build context
 (`docker build -f apps/agent/Dockerfile .`), so `packages/shared` is present as real files. esbuild
-then follows the symlink and inlines shared code into one `dist/agent.js`. Only that file is copied
+then follows the symlink and inlines shared code into one `dist/agent.js`. Only `dist/` is copied
 into the runtime stage. The final image has no `packages/shared` and no `node_modules`.
+
+Bundling pi costs three things, each an assumption an installed package satisfies for free:
+
+- **A `createRequire` banner.** esbuild's ESM output leaves `require`, `__dirname`, and `__filename`
+  free, and a module scope defines none of them. Without the banner the bundle throws on its first
+  import.
+- **`photon_rs_bg.wasm` beside `agent.js`.** photon-node reads its wasm from its own directory, which
+  after bundling is `dist/`. Pi swallows a failed load, so omitting it costs the model full-size
+  renders and reports nothing.
+- **`dist/pi/`, named outright by `PI_PACKAGE_DIR`.** Pi reads its themes, its banner art, its export
+  templates, its docs, and its own `package.json` from the package directory, which it locates by
+  walking up from `__dirname` until it finds a `package.json`. A bundle has neither those files nor
+  that marker, so the build copies them and the banner sets the variable. The themes are read in
+  `InteractiveMode`'s constructor, so without this the terminal UI does not start at all.
 
 **The web app.** Vercel installs from the workspace root, and Next.js output tracing copies shared
 code into the deployment.
