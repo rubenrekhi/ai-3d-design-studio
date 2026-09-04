@@ -8,6 +8,26 @@ import {
   getAgentDir,
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
+import { SCENE_BUILDER_PROMPT } from './prompt'
+import { inspectSceneTool, previewAssetTool, runBlenderTool } from './tools'
+
+/**
+ * `bash` is deliberately absent. The harness has to be able to promise that a
+ * finished run builds, and it cannot promise that through an invocation of
+ * Blender it does not own. Pi's `ls`, `find`, and `grep` cover the exploring
+ * that bash would otherwise be reached for.
+ */
+const STUDIO_TOOLS = [
+  'read',
+  'write',
+  'edit',
+  'ls',
+  'find',
+  'grep',
+  runBlenderTool.name,
+  inspectSceneTool.name,
+  previewAssetTool.name,
+]
 
 export interface StudioAgentOptions {
   /**
@@ -50,11 +70,17 @@ export async function createStudioAgent(
     sessionManager,
     sessionStartEvent,
   }) => {
-    const services = await createAgentSessionServices({ cwd, agentDir })
+    const services = await createAgentSessionServices({
+      cwd,
+      agentDir,
+      resourceLoaderOptions: { systemPrompt: SCENE_BUILDER_PROMPT },
+    })
     const created = await createAgentSessionFromServices({
       services,
       sessionManager,
       sessionStartEvent,
+      tools: STUDIO_TOOLS,
+      customTools: [runBlenderTool, inspectSceneTool, previewAssetTool],
     })
     return { ...created, services, diagnostics: services.diagnostics }
   }
