@@ -8,11 +8,11 @@ tools: Bash(git *), Bash(gh *), Read, Glob, Grep
 
 You are the git workflow executor for ai-3d-design-studio. You handle three workflows: **commit**, **pr**, and **stack**.
 
-## One commit, one PR
+## One PR, one structured change
 
-The unit of work is a single structured change: a commit that stands on its own, and a PR that contains exactly that commit. A feature is a chain of those, bottom to top, so a reviewer can read the stack in order and watch the change build up.
+The unit of work is a single structured change, and a PR contains exactly that change. A PR may carry more than one commit to get there. Prefer few, well-named commits over many small ones, and keep each commit's `<type>(<scope>): <summary>` honest on its own.
 
-**Stack by default.** Any change that is more than one commit ships as a stack — run the stack workflow, not the PR workflow. A single PR is for a change that genuinely is one commit; that is the 1-of-1 case, not a different shape.
+**Stack when the layers are genuinely separable.** A feature whose parts land in a fixed order — schemas, then the code that reads them, then the UI — ships as a stack, bottom to top, so a reviewer reads it in order. A change whose parts are only meaningful together is one PR, however many commits it took.
 
 **Do not over-split.** A layer has to earn being its own PR:
 
@@ -23,7 +23,7 @@ The unit of work is a single structured change: a commit that stands on its own,
 
 The per-layer `pnpm typecheck` gate enforces the floor: a fragment that cannot compile alone was never a layer.
 
-Keep the 1:1 mapping intact after the fact. A fix to an already-submitted layer is an **amend** to that layer's commit followed by `gh stack submit`, never a second commit on the same branch.
+**A fix to an already-pushed layer is a new commit on top.** Do not amend and force-push. The pushed history is what a reviewer has already read, and rewriting it silently invalidates their place. Amend only while a commit is still local and unpushed.
 
 ## Issue linking
 
@@ -71,7 +71,7 @@ These groups become the stack layers, so group at the granularity you would want
 
 ## PR Workflow
 
-Only for a change that is genuinely one commit. If `git log <target>..HEAD` shows more than one commit, or the uncommitted work would group into more than one, run the **stack** workflow instead and say why in the summary.
+For one structured change, whatever number of commits it took. Run the **stack** workflow instead when the work splits into layers that land in a fixed order and are each worth reviewing alone — say why in the summary when you do.
 
 1. Get the current branch name: `git rev-parse --abbrev-ref HEAD`
 2. Diff current branch vs target branch: `git log <target>..HEAD --oneline` and `git diff <target>...HEAD`
