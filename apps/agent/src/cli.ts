@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { stdin } from 'node:process'
@@ -187,7 +187,23 @@ async function findSession(workdir: string, id: string): Promise<string> {
   return only.path
 }
 
+/**
+ * Pi merges `<workdir>/.pi/settings.json` over its global settings, so this
+ * quiets the startup banner for our workspaces without touching the settings
+ * of any other pi on the machine. Written once, then it is the person's.
+ */
+function seedSettings(workdir: string): void {
+  const path = join(workdir, '.pi', 'settings.json')
+  if (existsSync(path)) return
+  mkdirSync(join(workdir, '.pi'), { recursive: true })
+  writeFileSync(path, `${JSON.stringify({ quietStartup: true }, null, 2)}\n`)
+}
+
 async function main(): Promise<void> {
+  // The banner tells you to run `pi update`, which cannot move a version this
+  // package pins exactly.
+  process.env.PI_SKIP_VERSION_CHECK = '1'
+
   const args = parseArgs(process.argv.slice(2))
   if (
     args.session !== undefined &&
@@ -214,6 +230,7 @@ async function main(): Promise<void> {
   }
 
   mkdirSync(workdir, { recursive: true })
+  seedSettings(workdir)
 
   if (args.session !== undefined) {
     sessionFile = await findSession(workdir, args.session)
