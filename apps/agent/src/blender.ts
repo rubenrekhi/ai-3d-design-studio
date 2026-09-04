@@ -5,10 +5,12 @@ import { performance } from 'node:perf_hooks'
 const MACOS_BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender'
 const DEFAULT_SCRIPT = 'scene.py'
 const DEFAULT_TIMEOUT_MS = 120_000
+const MAX_REPORT_LINES = 40
 
 export interface RunBlenderOptions {
   script?: string
   timeoutMs?: number
+  signal?: AbortSignal
 }
 
 export interface BlenderResult {
@@ -28,6 +30,15 @@ function withNote(stderr: string, note: string): string {
   return `${stderr}${sep}${note}\n`
 }
 
+/**
+ * Blender is loud. A failure is a Python traceback at the end of it, and a
+ * successful build's own prints are at the end too.
+ */
+export function lastLines(text: string, count = MAX_REPORT_LINES): string {
+  const lines = text.trim().split('\n')
+  return lines.slice(-count).join('\n')
+}
+
 export function runBlender(
   workdir: string,
   opts: RunBlenderOptions = {},
@@ -42,6 +53,18 @@ export function runBlender(
 
   return new Promise((settle) => {
     const start = performance.now()
+
+    // An AbortSignal never replays: a listener added after the fact is silent.
+    if (opts.signal?.aborted === true) {
+      settle({
+        ok: false,
+        stdout: '',
+        stderr: 'Blender was not started: the run was cancelled.\n',
+        durationMs: 0,
+      })
+      return
+    }
+
     const child = spawn(binary, args, { cwd: workdir })
 
     let stdout = ''
@@ -54,10 +77,16 @@ export function runBlender(
       child.kill('SIGKILL')
     }, timeoutMs)
 
+    const abort = () => {
+      child.kill('SIGKILL')
+    }
+    opts.signal?.addEventListener('abort', abort, { once: true })
+
     const finish = (result: BlenderResult) => {
       if (done) return
       done = true
       clearTimeout(timer)
+      opts.signal?.removeEventListener('abort', abort)
       settle(result)
     }
 
@@ -92,6 +121,15 @@ export function runBlender(
             stderr,
             `Blender killed after exceeding the ${timeoutMs}ms timeout.`,
           ),
+          durationMs,
+        })
+        return
+      }
+      if (opts.signal?.aborted === true) {
+        finish({
+          ok: false,
+          stdout,
+          stderr: withNote(stderr, 'Blender killed: the run was cancelled.'),
           durationMs,
         })
         return

@@ -75,6 +75,14 @@ describe('hashTree', () => {
     const manifest = await hashTree(dir)
     expect(Object.keys(manifest)).toEqual(['scene.glb'])
   })
+
+  it('excludes the bytecode Python writes beside an imported asset', async () => {
+    await write('scene.py', 'x')
+    await write('assets/chair.py', 'y')
+    await write('assets/__pycache__/chair.cpython-311.pyc', 'BYTECODE')
+    const manifest = await hashTree(dir)
+    expect(Object.keys(manifest)).toEqual(['assets/chair.py', 'scene.py'])
+  })
 })
 
 describe('diff', () => {
@@ -127,5 +135,14 @@ describe('isExcludedPath', () => {
     expect(isExcludedPath('scene.py')).toBe(false)
     expect(isExcludedPath('assets/chair.py')).toBe(false)
     expect(isExcludedPath('assets/.renders/x.png')).toBe(false)
+  })
+
+  it('excludes __pycache__ at any depth, unlike the root-anchored entries', () => {
+    expect(isExcludedPath('__pycache__/scene.cpython-311.pyc')).toBe(true)
+    expect(isExcludedPath('assets/__pycache__/chair.cpython-311.pyc')).toBe(
+      true,
+    )
+    expect(isExcludedPath('assets/parts/__pycache__/leg.pyc')).toBe(true)
+    expect(isExcludedPath('assets/pycache/chair.py')).toBe(false)
   })
 })
