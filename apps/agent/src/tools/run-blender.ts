@@ -3,8 +3,7 @@ import { join } from 'node:path'
 import { defineTool } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import { lastLines, runBlender } from '../blender'
-
-export const SCENE_GLB = 'scene.glb'
+import { SCENE_GLB } from '../render'
 
 export const runBlenderTool = defineTool({
   name: 'run_blender',
