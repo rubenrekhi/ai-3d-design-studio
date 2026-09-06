@@ -176,8 +176,8 @@ connecting to the product.
 
 ### P5 — extension scaffold and build guard · ~half day
 
-- [ ] `src/extension.ts` exporting `studioExtension(onCommit)`
-- [ ] `agent_end` → run Blender → on failure, inject the error and let the loop continue
+- [x] `src/extension.ts` exporting `studioExtension({ onCommit, onBuild, services })`
+- [x] `agent_end` → run Blender → on failure, inject the error and let the loop continue
 
 ```ts
 pi.sendMessage(
@@ -192,6 +192,22 @@ something trivial such as "say hi", then assert:
 - the guard fires and the agent receives the error
 - `agent_settled` fires exactly once, and only after the build is green
 - the injected message is not attributed to the user
+
+**Decided.**
+
+- **Verified without a model.** `src/test/scripted.ts` registers a provider whose replies are
+  scripted, so the tests drive pi's real loop, the real extension, and real Blender with no network.
+  `extension.test.ts` covers the three assertions above.
+- **The guard skips three cases.** After an error or an abort (pi may retry the first; the second is
+  over), when there is no `scene.py`, and when the workspace hashes the same as it did after the
+  model's own last successful `run_blender` — the common ending of build, look, reply costs no
+  second build.
+- **Five rounds, then it gives up.** The run settles as an error and nothing is committed from it.
+  Invariant 7 holds either way, and the loop is bounded.
+- **Ten `run_blender` calls per run.** The eleventh is refused with a result telling the model to
+  finish; the guard still builds what it leaves. Pi itself caps neither turns nor builds.
+- **A run is several pi loops.** Every continuation fires `agent_start` again, so the extension
+  starts a run at the first `agent_start` after a settle, and P7 and P8 snapshot once.
 
 ### P6 — agent image · ~1 day · parallel with P5
 
@@ -226,21 +242,36 @@ file — coordinate or sequence them if running parallel workspaces.
 
 ### P7 — commit hook · ~half day
 
-- [ ] `agent_start` → manifest A
-- [ ] `agent_settled` → manifest B → `onCommit(diff(A, B), workdir)`
-- [ ] Read `stopReason` from the last assistant message to tell success from failure
+- [x] `agent_start` → manifest A
+- [x] `agent_settled` → manifest B → `onCommit(commit)` with `diff(A, B)`
+- [x] Read `stopReason` from the last assistant message to tell success from failure
+
+**Decided.** `onCommit(commit)` takes one `Commit` from `packages/shared`: `status` (`ok`, `error`,
+`aborted`), `workdir`, pi's `sessionId`, the leaf `entryId`, and the `conversation` with its renders
+stubbed. Only `ok` carries `manifest` and `changed`, so the failed rows of `ARCHITECTURE.md` 8.2 are
+a type rather than a convention. The guard giving up is an `error` too. `onBuild` reports the guard's
+builds separately, since the product cannot otherwise see them.
 
 **Verify.** Pass a logging `onCommit`. Assert it fires once per run with the right change set, and
-that a killed run commits nothing.
+that a killed run commits nothing. Both are in `extension.test.ts`.
 
 ### P8 — image lifecycle · ~half day
 
-- [ ] Snapshot the entry index at `agent_start`
-- [ ] `context` hook stubs images from earlier runs
-- [ ] Stub text carries the `inspect_scene` parameters
+- [x] Snapshot the tool-result ids present when the run starts
+- [x] `context` hook stubs images from earlier runs
+- [x] Stub text carries the `inspect_scene` parameters
+
+**Decided.** The snapshot is the set of tool-result ids present when the run starts, not an entry
+index: `context` hands over messages rather than entries, and a compaction mid-run would move an
+index, while an id survives both. A `preview_asset` stub names the asset and the view:
+`[render — "chair" from the front (azimuth 0°, elevation 10°). Re-run preview_asset to look again.]`.
+The same `stubImages` strips the conversation for `onCommit`, so the recipe the model keeps is the
+recipe the store keeps.
 
 **Verify.** Three inspections in run 1, then start run 2. Dump what `context` returns and assert
-run-1 images are stubs while run-2 images are intact. Compare token counts.
+run-1 images are stubs while run-2 images are intact. Compare token counts. `extension.test.ts` does
+this through the scripted model, which receives exactly what `context` produced: run 2's context has
+no image and is under a tenth of the size of run 1's.
 
 ---
 
@@ -258,10 +289,21 @@ before those exist means guessing at shapes and revising `packages/shared` once 
 - [x] Pass the resolved file to `createStudioAgent({ workdir, sessionFile })`
 - [x] The no-flag scaffolding flow
 - [x] Fall back to the usage error when stdin is not a TTY
-- [ ] Emit JSONL events from `session.subscribe()`
-- [ ] Zod schemas in `packages/shared`
+- [x] Emit JSONL events from `session.subscribe()`
+- [x] Zod schemas in `packages/shared`
+
+**Decided.** `--prompt <text>` is the transport: one message to settle, one JSON object per line on
+stdout, and an exit of `0`, `2`, or `1` for committed, failed, and never ran. The events are
+`session`, `run_start`, `text_delta`, `assistant`, `tool_call`, `tool_result`, `build`, `commit`,
+`run_end`, and `error`; `harnessEventSchema` in `packages/shared` is the contract. A tool result
+carries text, an image count, and the tool's `details`, never pixels. The `commit` event is the
+`onCommit` payload itself, so the store adapter lives in the product process on every transport and
+the harness keeps no network client. `ARCHITECTURE.md` 11.1 has the table.
 
 **Verify.** Pipe stdout to a file. Assert every line parses as JSON and validates against the schema.
+Done against three real runs; `protocol.test.ts` checks the mapping. Run the agent as `node
+dist/agent.js` or `studio-agent`, not through `pnpm run`, which prints its own banner to stdout when
+the exit code is nonzero.
 
 Split records on `\n` only. Node's `readline` also splits on U+2028 and U+2029, which are legal
 inside JSON strings, so it is not safe for this protocol.
@@ -279,11 +321,20 @@ lists both. `ARCHITECTURE.md` 11.1 has the full flag table and the flow.
 Nothing depends on this. It is the one phase the product could ship without, and it is here because
 P4 built the half the agent already uses alone.
 
-- [ ] A `spawn_asset_builder` tool registered by `studioExtension`
-- [ ] One asset-builder agent per asset, each with its own `assets/<name>/` cwd
-- [ ] In-process by default, on a nested `createAgentSession()`
-- [ ] A concurrency cap, and `executionMode: 'parallel'` on the tool
-- [ ] The parent assembles: it places what the children built
+- [x] A `spawn_asset_builder` tool registered by `studioExtension`
+- [x] One asset-builder agent per asset, on the workspace as cwd, writing a flat `assets/<name>.py`
+- [x] In-process, on a nested `createAgentSessionFromServices()`
+- [x] A concurrency cap, and `executionMode: 'parallel'` on the tool
+- [x] The parent assembles: it places what the children built
+
+**Decided.** The builder's cwd is the workspace, not `assets/<name>/`: the flat module contract of
+P4 stands, `preview_asset` works unchanged in the child, and the builder can read `scene.py` to match
+scale and style. Pi's file tools resolve against cwd but do not fence it, so a directory would not
+have isolated anything a prompt does not. The tools are `read`, `write`, `edit`, `ls`, `find`,
+`grep`, and `preview_asset`, with no `run_blender`. Children share the parent's model runtime and
+settings, run on `SessionManager.inMemory(workdir)` with the asset-builder prompt, and are capped at
+four at once. The parent gets one line back, checked against the file, which must exist and define
+`build()`. `subagent.test.ts` builds two at once and asserts that no image ever entered the parent.
 
 **Why it waits for P5 and P7.** Asset modules multiply the ways a scene can break, and the build
 guard is what makes invariant 7 true. Subagents also sit inside one run, so P7 still sees one user
@@ -330,11 +381,9 @@ the parallel case safe; this is the phase that first depends on it.
 
 ## Decisions this plan will force
 
-**`onCommit`'s signature is incomplete** (P7). `ARCHITECTURE.md` gives `(changed, workdir)`, but
-invariant 2 says the conversation also leaves through `onCommit`, and the run sequence has it posting
-the conversation. Stripping images means parsing pi's message format, which is harness knowledge, so
-the harness should strip and pass the conversation through. Likely becomes
-`({ changed, conversation, workdir })`.
+**`onCommit`'s signature** (P7) — decided above: one `Commit` with `status`, `workdir`, `sessionId`,
+`entryId`, and `conversation`, plus `manifest` and `changed` on success. The harness strips, because
+stripping means parsing pi's message format, which is harness knowledge.
 
 **The exclusion list needs a home** (P3). The hasher lives here; `materialize()` lives in `apps/web`;
 the two must never drift. `packages/shared` is schemas and types only, but a `const` array of globs
@@ -342,21 +391,6 @@ is data rather than runtime logic, so it probably belongs there. Decide delibera
 
 ## Deferred
 
-Compaction tuning, TUI customization, VCR push. None block the critical path, and the first is
-cheaper to decide after watching the agent run for a while.
-
-### Asset subagents
-
-`preview_asset` shipped in P4, which is the half of this the agent uses alone. Parallel subagents
-building an asset each is the other half, and it waits for P5 and P7: asset modules multiply the ways
-a scene can break, and the build guard is what makes invariant 7 true.
-
-- **They must be built in-process.** Pi's own `subagent/` example spawns a separate `pi` process per
-  task, which would get pi's default prompt and tools rather than ours — an agent outside the
-  harness. Build them on `createAgentSessionFromServices` with `SessionManager.inMemory(workdir)`, an
-  asset-builder prompt, and a tool set of `read`/`write`/`edit` plus `preview_asset` — no
-  `run_blender`, since a subagent has no business building the whole scene.
-- **The payoff is 7.1's problem.** A subagent's dozen contact sheets never enter the parent's
-  context; it gets back one line naming the module and its `build()` signature.
-- **Turning on `executionMode: 'parallel'` is what makes this real**, and the scratch-file naming
-  P4 settled is what makes that safe.
+Compaction tuning, TUI customization, VCR push, and a `--model` flag for the transport (today the
+product selects a model through pi's settings in `PI_CODING_AGENT_DIR`). None block the critical
+path, and the first is cheaper to decide after watching the agent run for a while.
