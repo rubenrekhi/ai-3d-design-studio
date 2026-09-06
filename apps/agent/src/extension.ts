@@ -1,4 +1,5 @@
 import type {
+  AgentSessionServices,
   ExtensionAPI,
   InlineExtension,
 } from '@earendil-works/pi-coding-agent'
@@ -7,6 +8,7 @@ import { buildScene, hasScene } from './build'
 import { stubConversation, stubImages } from './images'
 import { diff, hashTree } from './manifest'
 import { lastAssistant, messagesOf, toolResultIds } from './messages'
+import { assetBuilderTool } from './subagent'
 import { runBlenderTool } from './tools'
 
 /**
@@ -28,6 +30,8 @@ export interface StudioExtensionOptions {
   onCommit?: (commit: Commit) => Promise<void>
   /** Each build the guard runs. Builds the model asks for arrive as tool results. */
   onBuild?: (build: BuildReport) => void
+  /** The services this extension's own session was built from, once they exist. */
+  services: () => AgentSessionServices
 }
 
 export function studioExtension(opts: StudioExtensionOptions): InlineExtension {
@@ -42,6 +46,8 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   let builds = 0
   let guardRounds = 0
   let guardError: string | undefined
+
+  pi.registerTool(assetBuilderTool(opts.services))
 
   // Pi starts a fresh loop for every continuation — the guard's follow-up, a
   // retry, a compaction — and a run is the whole of them, so only the first
