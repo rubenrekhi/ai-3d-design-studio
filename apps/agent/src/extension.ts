@@ -2,17 +2,18 @@ import type {
   ExtensionAPI,
   InlineExtension,
 } from '@earendil-works/pi-coding-agent'
-import type { BuildReport, Manifest } from '@repo/shared'
+import type { BuildReport, Commit, Manifest } from '@repo/shared'
 import { buildScene, hasScene } from './build'
-import { stubImages } from './images'
-import { hashTree } from './manifest'
-import { lastAssistant, toolResultIds } from './messages'
+import { stubConversation, stubImages } from './images'
+import { diff, hashTree } from './manifest'
+import { lastAssistant, messagesOf, toolResultIds } from './messages'
 import { runBlenderTool } from './tools'
 
 /**
  * How many build errors one run gets fed back before the harness stops
- * feeding them. Without a limit a model that cannot fix its scene would loop
- * until the context ran out.
+ * feeding them. A run that uses them all settles as an error, so nothing is
+ * committed from it; without a limit a model that cannot fix its scene would
+ * loop until the context ran out.
  */
 const MAX_GUARD_ROUNDS = 5
 
@@ -23,6 +24,8 @@ const MAX_GUARD_ROUNDS = 5
 const MAX_BUILDS_PER_RUN = 10
 
 export interface StudioExtensionOptions {
+  /** Awaited, and its errors surface through pi's extension error channel. */
+  onCommit?: (commit: Commit) => Promise<void>
   /** Each build the guard runs. Builds the model asks for arrive as tool results. */
   onBuild?: (build: BuildReport) => void
 }
@@ -33,20 +36,24 @@ export function studioExtension(opts: StudioExtensionOptions): InlineExtension {
 
 function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   let inRun = false
+  let before: Manifest = {}
   let earlierResults = new Set<string>()
   let lastGoodBuild: Manifest | undefined
   let builds = 0
   let guardRounds = 0
+  let guardError: string | undefined
 
   // Pi starts a fresh loop for every continuation — the guard's follow-up, a
   // retry, a compaction — and a run is the whole of them, so only the first
   // start after a settle begins one.
-  pi.on('agent_start', (_event, ctx) => {
+  pi.on('agent_start', async (_event, ctx) => {
     if (inRun) return
     inRun = true
     builds = 0
     guardRounds = 0
+    guardError = undefined
     earlierResults = toolResultIds(ctx.sessionManager.getEntries())
+    before = await hashTree(ctx.cwd)
   })
 
   pi.on('context', (event) => ({
@@ -94,7 +101,10 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
     }
 
     guardRounds += 1
-    if (guardRounds > MAX_GUARD_ROUNDS) return
+    if (guardRounds > MAX_GUARD_ROUNDS) {
+      guardError = build.error
+      return
+    }
     pi.sendMessage(
       {
         customType: 'build-error',
@@ -106,8 +116,35 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
     )
   })
 
-  pi.on('agent_settled', () => {
+  pi.on('agent_settled', async (_event, ctx) => {
+    if (!inRun) return
     inRun = false
+    if (opts.onCommit === undefined) return
+
+    const entries = ctx.sessionManager.getEntries()
+    const last = lastAssistant(messagesOf(entries))
+    const base = {
+      workdir: ctx.cwd,
+      sessionId: ctx.sessionManager.getSessionId(),
+      entryId: ctx.sessionManager.getLeafId(),
+      conversation: stubConversation(ctx.sessionManager.getHeader(), entries),
+    }
+
+    let commit: Commit
+    if (guardError !== undefined) {
+      commit = { ...base, status: 'error', error: guardError }
+    } else if (last?.stopReason === 'aborted' || last?.stopReason === 'error') {
+      commit = { ...base, status: last.stopReason, error: last.errorMessage }
+    } else {
+      const after = await hashTree(ctx.cwd)
+      commit = {
+        ...base,
+        status: 'ok',
+        manifest: after,
+        changed: diff(before, after),
+      }
+    }
+    await opts.onCommit(commit)
   })
 }
 
