@@ -6,7 +6,7 @@ import type {
   AgentSessionEvent,
   AgentSessionRuntime,
 } from '@earendil-works/pi-coding-agent'
-import type { BuildReport } from '@repo/shared'
+import type { BuildReport, Commit } from '@repo/shared'
 import { createStudioAgent } from '../agent'
 import { type Respond, useScriptedModel } from './scripted'
 
@@ -41,6 +41,7 @@ export interface Fixture {
   workdir: string
   runtime: AgentSessionRuntime
   events: AgentSessionEvent[]
+  commits: Commit[]
   builds: BuildReport[]
   write(rel: string, content: string): Promise<void>
   read(rel: string): Promise<string | undefined>
@@ -57,9 +58,13 @@ export async function fixture(respond: Respond): Promise<Fixture> {
   await mkdir(workdir, { recursive: true })
   process.env.PI_CODING_AGENT_DIR = join(root, 'agent')
 
+  const commits: Commit[] = []
   const builds: BuildReport[] = []
   const runtime = await createStudioAgent({
     workdir,
+    onCommit: async (commit) => {
+      commits.push(commit)
+    },
     onBuild: (build) => {
       builds.push(build)
     },
@@ -74,6 +79,7 @@ export async function fixture(respond: Respond): Promise<Fixture> {
     workdir,
     runtime,
     events,
+    commits,
     builds,
     async write(rel, content) {
       const abs = join(workdir, rel)
