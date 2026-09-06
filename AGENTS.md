@@ -69,13 +69,16 @@ out of the main conversation. An agent with no subagent support reads that file 
 steps itself. Either way these hold:
 
 - Stage explicit paths. Never `git add -A` or `git add .`.
-- No attribution lines in commits. Never force-push a branch that already exists on the remote.
+- No attribution lines in commits. Fix a commit by amending it and pushing with
+  `git push --force-with-lease`; never plain `--force`.
 - Report what was done, including the cut chosen for a stack, rather than asking before doing it.
 
-One PR is one structured change, in as many commits as it takes; a feature whose parts land in a
-fixed order is a stack of those read bottom to top. Split into a stack when the layers are separable
-and each is worth reviewing alone, not merely because the work ran to more than one commit. Don't over-split: a layer that can't carry a real `<type>(<scope>): <summary>`, or
-that only makes sense once you read the layer above it, belongs to that layer instead.
+One PR is one commit is one structured change; a feature whose parts land in a fixed order is a
+stack of those read bottom to top. Work that needs more than one commit is more than one PR, so
+split into a stack when the layers are separable and each is worth reviewing alone, and amend
+rather than add a second commit when a layer needs a fix. Don't over-split: a layer that can't
+carry a real `<type>(<scope>): <summary>`, or that only makes sense once you read the layer above
+it, belongs to that layer instead.
 
 Cut bottom to top along the seams that already exist: `packages/shared` schemas → `apps/agent`
 harness → `apps/web` orchestration → `apps/web` UI. Every layer must pass `pnpm typecheck` on its
