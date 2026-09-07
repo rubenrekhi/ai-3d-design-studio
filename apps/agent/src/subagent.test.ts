@@ -13,6 +13,24 @@ afterEach(async () => {
   f = undefined
 })
 
+const spawn = (args: Record<string, unknown>) => ({
+  name: 'spawn_subagent',
+  args,
+})
+
+function toolResults(f: Fixture) {
+  return f.runtime.session.sessionManager
+    .getEntries()
+    .flatMap((entry) =>
+      entry.type === 'message' && entry.message.role === 'toolResult'
+        ? [entry.message]
+        : [],
+    )
+}
+
+const isBuilder = (context: Context) =>
+  context.systemPrompt?.startsWith('You build one asset') === true
+
 describe.skipIf(!hasBlender)('asset builders', () => {
   it('build two assets at once and keep their renders out of the parent', async () => {
     const childTurns = new Map<string, number>()
@@ -22,7 +40,7 @@ describe.skipIf(!hasBlender)('asset builders', () => {
     let parentTurn = 0
 
     f = await fixture((context): Turn => {
-      if (context.systemPrompt?.startsWith('You build one asset') === true) {
+      if (isBuilder(context)) {
         const name =
           /Build assets\/(\w+)\.py/.exec(userText(context, 'first'))?.[1] ??
           'unknown'
@@ -54,14 +72,16 @@ describe.skipIf(!hasBlender)('asset builders', () => {
       if (parentTurn === 1) {
         return {
           calls: [
-            {
-              name: 'spawn_asset_builder',
-              args: { name: 'crate', brief: 'A wooden crate, a 1 m cube.' },
-            },
-            {
-              name: 'spawn_asset_builder',
-              args: { name: 'barrel', brief: 'An oak barrel, 1 m tall.' },
-            },
+            spawn({
+              role: 'asset_builder',
+              name: 'crate',
+              task: 'A wooden crate, a 1 m cube.',
+            }),
+            spawn({
+              role: 'asset_builder',
+              name: 'barrel',
+              task: 'An oak barrel, 1 m tall.',
+            }),
           ],
         }
       }
@@ -80,14 +100,10 @@ describe.skipIf(!hasBlender)('asset builders', () => {
 
     const entries = f.runtime.session.sessionManager.getEntries()
     expect(JSON.stringify(entries)).not.toContain('"type":"image"')
-    const results = entries.flatMap((entry) =>
-      entry.type === 'message' && entry.message.role === 'toolResult'
-        ? [entry.message]
-        : [],
-    )
+    const results = toolResults(f)
     expect(results.map((r) => r.toolName)).toEqual([
-      'spawn_asset_builder',
-      'spawn_asset_builder',
+      'spawn_subagent',
+      'spawn_subagent',
     ])
     expect(results.every((r) => !r.isError)).toBe(true)
     const reported = JSON.stringify(results)
@@ -109,32 +125,19 @@ describe.skipIf(!hasBlender)('asset builders', () => {
 
   it('report a builder that never wrote its module as an error', async () => {
     f = await fixture((context): Turn => {
-      if (context.systemPrompt?.startsWith('You build one asset') === true) {
-        return { text: 'I could not think of anything.' }
-      }
-      const done = context.messages.some(
-        (message) => message.role === 'toolResult',
-      )
+      if (isBuilder(context)) return { text: 'I could not think of anything.' }
+      const done = context.messages.some((m) => m.role === 'toolResult')
       return done
         ? { text: 'The builder failed.' }
         : {
             calls: [
-              {
-                name: 'spawn_asset_builder',
-                args: { name: 'lamp', brief: 'A lamp.' },
-              },
+              spawn({ role: 'asset_builder', name: 'lamp', task: 'A lamp.' }),
             ],
           }
     })
     await f.runtime.session.prompt('build a lamp')
 
-    const results = f.runtime.session.sessionManager
-      .getEntries()
-      .flatMap((entry) =>
-        entry.type === 'message' && entry.message.role === 'toolResult'
-          ? [entry.message]
-          : [],
-      )
+    const results = toolResults(f)
     expect(results).toHaveLength(1)
     expect(results[0]?.isError).toBe(true)
     expect(JSON.stringify(results[0]?.content)).toContain(

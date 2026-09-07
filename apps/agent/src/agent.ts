@@ -31,7 +31,7 @@ const STUDIO_TOOLS = [
   runBlenderTool.name,
   inspectSceneTool.name,
   previewAssetTool.name,
-  'spawn_asset_builder',
+  'spawn_subagent',
 ]
 
 export interface StudioAgentOptions {
