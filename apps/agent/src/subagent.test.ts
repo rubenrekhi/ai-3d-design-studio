@@ -3,7 +3,13 @@ import { join } from 'node:path'
 import type { Context } from '@earendil-works/pi-ai'
 import { afterEach, describe, expect, it } from 'vitest'
 import { imageCount, userText } from './test/context'
-import { assetModule, type Fixture, fixture, hasBlender } from './test/fixture'
+import {
+  assetModule,
+  type Fixture,
+  fixture,
+  GOOD_SCENE,
+  hasBlender,
+} from './test/fixture'
 import type { Turn } from './test/scripted'
 
 let f: Fixture | undefined
@@ -30,6 +36,8 @@ function toolResults(f: Fixture) {
 
 const isBuilder = (context: Context) =>
   context.systemPrompt?.startsWith('You build one asset') === true
+const isCritic = (context: Context) =>
+  context.systemPrompt?.startsWith('You judge') === true
 
 describe.skipIf(!hasBlender)('asset builders', () => {
   it('build two assets at once and keep their renders out of the parent', async () => {
@@ -144,5 +152,84 @@ describe.skipIf(!hasBlender)('asset builders', () => {
       'without writing assets/lamp.py',
     )
     expect(f.commits[0]?.status).toBe('ok')
+  })
+})
+
+describe.skipIf(!hasBlender)('critics', () => {
+  it('look at the built scene and hand back only their report', async () => {
+    const criticContexts: Context[] = []
+    let parentTurn = 0
+    f = await fixture((context): Turn => {
+      if (isCritic(context)) {
+        criticContexts.push(context)
+        if (criticContexts.length === 1) {
+          return {
+            calls: [
+              {
+                name: 'inspect_scene',
+                args: { azimuth: 45, elevation: 25, framing: 'scene' },
+              },
+              {
+                name: 'inspect_scene',
+                args: { azimuth: 0, elevation: 85, framing: 'Cube' },
+              },
+            ],
+          }
+        }
+        return { text: '1. Cube: sits on the origin as asked. Nothing wrong.' }
+      }
+      parentTurn += 1
+      if (parentTurn === 1) {
+        return {
+          calls: [
+            { name: 'write', args: { path: 'scene.py', content: GOOD_SCENE } },
+          ],
+        }
+      }
+      if (parentTurn === 2)
+        return { calls: [{ name: 'run_blender', args: {} }] }
+      if (parentTurn === 3) {
+        return {
+          calls: [
+            spawn({
+              role: 'critic',
+              task: 'The request was a 1 m cube. Judge it.',
+            }),
+          ],
+        }
+      }
+      return { text: 'The critic found nothing wrong.' }
+    })
+    await f.runtime.session.prompt('make a cube and have it checked')
+
+    expect(criticContexts).toHaveLength(2)
+    expect(criticContexts[1] && imageCount(criticContexts[1])).toBe(2)
+    expect(userText(criticContexts[0] as Context, 'first')).toContain(
+      'The request was a 1 m cube.',
+    )
+
+    const entries = f.runtime.session.sessionManager.getEntries()
+    expect(JSON.stringify(entries)).not.toContain('"type":"image"')
+    const verdict = toolResults(f).find((r) => r.toolName === 'spawn_subagent')
+    expect(verdict?.isError).toBe(false)
+    expect(JSON.stringify(verdict?.content)).toContain(
+      '1. Cube: sits on the origin as asked.',
+    )
+    expect(verdict?.details).toMatchObject({ role: 'critic', toolCalls: 2 })
+  }, 120_000)
+})
+
+describe('spawn_subagent', () => {
+  it('refuses an asset_builder with no module name', async () => {
+    f = await fixture((context): Turn => {
+      const done = context.messages.some((m) => m.role === 'toolResult')
+      return done
+        ? { text: 'I will name it next time.' }
+        : { calls: [spawn({ role: 'asset_builder', task: 'A chair.' })] }
+    })
+    await f.runtime.session.prompt('build a chair')
+    const [result] = toolResults(f)
+    expect(result?.isError).toBe(true)
+    expect(JSON.stringify(result?.content)).toContain('needs a name')
   })
 })
