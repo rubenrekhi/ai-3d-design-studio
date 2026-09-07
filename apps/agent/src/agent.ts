@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import {
   type AgentSessionRuntime,
+  type CreateAgentSessionFromServicesOptions,
   type CreateAgentSessionRuntimeFactory,
   createAgentSessionFromServices,
   createAgentSessionRuntime,
@@ -8,7 +9,7 @@ import {
   getAgentDir,
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
-import type { BuildReport } from '@repo/shared'
+import type { BuildReport, Commit } from '@repo/shared'
 import { studioExtension } from './extension'
 import { SCENE_BUILDER_PROMPT } from './prompt'
 import { inspectSceneTool, previewAssetTool, runBlenderTool } from './tools'
@@ -43,13 +44,22 @@ export interface StudioAgentOptions {
    * match, which is the caller's job for the same reason `workdir` is.
    */
   sessionFile?: string
+  /** The model to run. Absent, pi's own default applies. */
+  model?: CreateAgentSessionFromServicesOptions['model']
+  /**
+   * Called once per run after it settles, with the workspace diff on success
+   * and the conversation either way. Awaited; without it the agent stands
+   * alone, which is the fastest loop there is.
+   */
+  onCommit?: (commit: Commit) => Promise<void>
   /** Called for each build the guard runs at the end of a run. */
   onBuild?: (build: BuildReport) => void
 }
 
 /**
  * The harness: pi with the scene-building prompt, the three Blender tools,
- * and one extension that guards the build at the end of every run.
+ * and one extension that guards the build, hashes the workspace, and hands the
+ * result to `onCommit`.
  *
  * Returns pi's runtime rather than a bare session because the interactive TUI
  * needs it; product callers read `runtime.session`.
@@ -79,13 +89,16 @@ export async function createStudioAgent(
       agentDir,
       resourceLoaderOptions: {
         systemPrompt: SCENE_BUILDER_PROMPT,
-        extensionFactories: [studioExtension({ onBuild: opts.onBuild })],
+        extensionFactories: [
+          studioExtension({ onCommit: opts.onCommit, onBuild: opts.onBuild }),
+        ],
       },
     })
     const created = await createAgentSessionFromServices({
       services,
       sessionManager,
       sessionStartEvent,
+      model: opts.model,
       tools: STUDIO_TOOLS,
       customTools: [runBlenderTool, inspectSceneTool, previewAssetTool],
     })
