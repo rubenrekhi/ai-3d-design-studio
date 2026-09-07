@@ -29,3 +29,11 @@ export function toolResultIds(entries: SessionEntry[]): Set<string> {
   }
   return ids
 }
+
+/** The assistant's prose, with tool calls and thinking left out. */
+export function textOf(message: AssistantMessage): string {
+  return message.content
+    .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+    .join('\n')
+    .trim()
+}
