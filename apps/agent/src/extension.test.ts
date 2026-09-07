@@ -94,3 +94,27 @@ describe.skipIf(!hasBlender)('build guard', () => {
     expect(toolResults(f, 'run_blender').map((r) => r.isError)).toEqual([false])
   }, 60_000)
 })
+
+describe.skipIf(!hasBlender)('build cap', () => {
+  it('refuses the eleventh run_blender of a run and lets the model finish', async () => {
+    f = await fixture(
+      inOrder([
+        write('scene.py', GOOD_SCENE),
+        ...Array.from({ length: 11 }, () => call('run_blender')),
+        { text: 'done' },
+      ]),
+    )
+    await f.runtime.session.prompt('build it again and again')
+
+    const results = toolResults(f, 'run_blender')
+    expect(results.map((r) => r.isError)).toEqual([
+      ...Array.from({ length: 10 }, () => false),
+      true,
+    ])
+    expect(JSON.stringify(results.at(-1)?.content)).toContain(
+      'all 10 of its run_blender builds',
+    )
+    expect(f.builds).toEqual([])
+    expect(f.events.at(-1)?.type).toBe('agent_settled')
+  }, 90_000)
+})
