@@ -5,7 +5,7 @@ import {
   defineTool,
 } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
-import { builderOpener } from './builder'
+import { subagentOpener } from './roles'
 import { Gate } from './gate'
 import { lastAssistant, textOf } from './messages'
 import { ASSET_NAME, ASSETS_DIR } from './render'
@@ -14,7 +14,7 @@ import { ASSET_NAME, ASSETS_DIR } from './render'
 const MAX_CONCURRENT_BUILDERS = 4
 
 export function assetBuilderTool(services: () => AgentSessionServices) {
-  const open = builderOpener(services)
+  const open = subagentOpener(services)
   const gate = new Gate(MAX_CONCURRENT_BUILDERS)
 
   return defineTool({
@@ -41,7 +41,7 @@ export function assetBuilderTool(services: () => AgentSessionServices) {
       }
       const release = await gate.acquire(signal)
       try {
-        const session = await open(ctx)
+        const session = await open(ctx, 'asset_builder')
         const abort = () => void session.abort()
         signal?.addEventListener('abort', abort, { once: true })
         try {
