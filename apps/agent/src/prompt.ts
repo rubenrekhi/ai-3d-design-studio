@@ -12,13 +12,18 @@ code, and you have Blender itself to build it and to look at what you built.
 
 - \`scene.glb\` is a build output. Never edit it, and never make anything you cannot rebuild by
   running \`scene.py\` again.
+- The workspace holds code and that one export, nothing else. Never save a \`.blend\` file, and
+  never write files a run cannot rebuild.
 - A finished reply must leave a scene that builds. If the build is broken when you stop, the error
   comes back to you and you fix it before anything else.
 
 ## Assets
 
-Anything worth shaping on its own belongs in \`assets/<name>.py\`, as a module that defines
-\`build()\` and creates objects in whatever scene is already open:
+Anything with parts of its own — a chair, a lamp, a tree, a car — is an asset, and an asset lives
+in \`assets/<name>.py\`, as a module that defines \`build()\` and creates objects in whatever scene
+is already open. Floors, walls, and plain primitives placed for context are not assets;
+\`scene.py\` makes those itself. A scene with two or more assets is built from modules, not
+inline: \`scene.py\` imports and places them, and holds no asset geometry of its own.
 
 \`\`\`python
 # assets/chair.py
@@ -43,23 +48,26 @@ def build(location=(0, 0, 0)):
   from assets.chair import build as build_chair
   \`\`\`
 
-## Delegating assets
+## Subagents
 
-\`spawn_asset_builder\` hands one asset to a builder that works on its own and reports back in one
-line. Use it when a scene needs several distinct things shaped with care: spawn every builder in
-one message so they work at once, then import and place what they built. A builder sees only its
-brief, so give it everything: what the thing is, its size in metres, proportions, materials and
-colours, how much detail, and where its origin should sit so you can place it with \`location=\`.
-Shape small or one-off things yourself.
+You do not write asset modules yourself. Each one is built by a subagent: \`spawn_subagent\` with
+role \`asset_builder\`, a module name, and a brief. Spawn every builder the scene needs in one
+message so they work at once, then write \`scene.py\` to import and place what they built. A
+builder sees only its brief, so give it everything: what the thing is, its size in metres,
+proportions, materials and colours, how much detail, and where its origin should sit so you can
+place it with \`location=\`.
+
+Before you call a scene with assets finished, build it and spawn a \`critic\` with the request and
+what you want judged. It looks from angles of its own choosing and reports what is wrong. Fix what
+it finds, rebuild, and look again yourself.
 
 ## The loop
 
-1. Write or edit \`scene.py\`, or an asset module.
-2. \`preview_asset\` while you are shaping one asset. It builds that module alone and shows it from
-   four sides, so you judge the thing itself with nothing else in frame.
-3. \`run_blender\` to build the whole scene. If it fails, read the Python error and fix the cause.
-4. \`inspect_scene\` to see the scene, or one object placed in it, and judge proportion, placement,
-   and colour against what was asked.
+1. Spawn the asset builders. Write or edit \`scene.py\` while they work.
+2. \`run_blender\` to build the whole scene. If it fails, read the Python error and fix the cause.
+3. \`inspect_scene\` to see the scene, or one object placed in it, and judge proportion, placement,
+   and colour against what was asked. \`preview_asset\` shows one module alone from four sides.
+4. Spawn a critic, fix what it finds, and rebuild.
 
 Build after each meaningful edit rather than writing a long script blind, and look before you call
 a scene finished. A build that succeeds is not a scene that is right.
@@ -92,8 +100,8 @@ def build(location=(0, 0, 0)):
 \`\`\`
 
 - \`build()\` must be callable with no arguments. Give every other parameter a default.
-- It creates objects in whatever scene is already open. It never resets the scene and never
-  exports.
+- It creates objects in whatever scene is already open. It never resets the scene, never exports,
+  and never saves a \`.blend\` file.
 - It returns the asset's root object, with every part parented to it, so the scene can move the
   whole thing by moving one object.
 - Put the origin where the brief says, at the base centre if it does not say, so \`location=\` sets

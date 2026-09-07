@@ -75,7 +75,7 @@ Use these words with these meanings. Do not use synonyms.
 │ · pi owns the agent loop, sessions, and compaction             │
 │ · file tools, restricted to the workspace                      │
 │ · run_blender, inspect_scene, preview_asset                    │
-│ · spawn_asset_builder: an asset built on its own session       │
+│ · spawn_subagent: asset builders and critics on own sessions   │
 │ · studioExtension: build guard, hashing, stubs, onCommit       │
 └───────────────┬────────────────────────────────────────────────┘
                 │ onCommit(commit)
@@ -219,7 +219,7 @@ way to wrap one in the other, so the harness builds the runtime. It is a superse
 reads its session as `runtime.session`.
 
 `studioExtension` is the only product seam. It owns the build guard, hashes the workspace, stubs old
-renders out of the model's view, registers `spawn_asset_builder`, and calls `onCommit`. Pi does
+renders out of the model's view, registers `spawn_subagent`, and calls `onCommit`. Pi does
 everything else.
 
 `onCommit` is optional. Without it you get a working 3D agent in a terminal. That is the fastest
@@ -273,25 +273,40 @@ person's to edit afterwards.
 Do not silence pi's warnings the same way. The banner is branding; a warning about billing or a
 missing model is information, and `warnings.anthropicExtraUsage` belongs to whoever is paying.
 
-### 5.7 Asset builders
+### 5.7 Subagents
 
-`spawn_asset_builder(name, brief)` builds one `assets/<name>.py` on a nested session in the same
-process: `createAgentSessionFromServices` on `SessionManager.inMemory(workdir)`, the asset-builder
-prompt, the parent's model, and `read`, `write`, `edit`, `ls`, `find`, `grep`, and `preview_asset`.
-No `run_blender`, because the scene is not the builder's to build, and no `inspect_scene`, because
-nothing of its is placed yet. The tool runs in parallel with its siblings and caps live builders at
-four, which is a Blender-per-preview limit rather than a pi one.
+`spawn_subagent(role, task, name?)` runs a task on a nested session in the same process:
+`createAgentSessionFromServices` on `SessionManager.inMemory(workdir)`, the role's prompt, the
+parent's model, and the role's tool set. Pi's SDK has no subagent facility of its own; its
+`subagent/` example shells out to the `pi` CLI, which would carry pi's prompt and tools rather than
+ours and does not exist in the sandbox image. The nested session is the same primitive without the
+process. Roles are defined in the harness (`roles.ts`), never by the model:
 
-The builder's cwd is the workspace, not `assets/<name>/`. The asset contract stays a flat module
-(7.4), `preview_asset` works unchanged in the child, and the builder can read `scene.py` to match
-scale and style. Isolation is a separate message list, prompt, and tool set, not a directory: pi's
-file tools resolve relative paths against cwd and do not fence them, so a directory would have bought
-nothing a prompt does not.
+| Role            | Tools                                                          | Returns                                          |
+| --------------- | -------------------------------------------------------------- | ------------------------------------------------ |
+| `asset_builder` | `read`, `write`, `edit`, `ls`, `find`, `grep`, `preview_asset` | one line: module, `build()` signature, footprint |
+| `critic`        | `read`, `ls`, `find`, `grep`, `inspect_scene`                  | a numbered list of what is wrong                 |
 
-What the parent sees is one tool result: the module path and the builder's one-line report, checked
-against the file, which must exist and define `build()`. The builder's contact sheets never enter the
-parent's context, and its session is discarded. A builder that ends in an error, an abort, or no
-module is an error result, and the run continues.
+Neither gets `run_blender`, because the scene is the parent's to build. The tool runs in parallel
+with its siblings and caps live subagents at four, which is a Blender-per-render limit rather than
+a pi one. The harness checks a builder's claim against the file, which must exist and define
+`build()`, and a critic's against its report, which must not be empty. A subagent that ends in an
+error, an abort, or nothing to show is an error result, and the run continues.
+
+A subagent's cwd is the workspace, not `assets/<name>/`. The asset contract stays a flat module
+(7.4), `preview_asset` and `inspect_scene` work unchanged in the child, and a builder can read
+`scene.py` to match scale and style. Isolation is a separate message list, prompt, and tool set,
+not a directory: pi's file tools resolve relative paths against cwd and do not fence them, so a
+directory would have bought nothing a prompt does not.
+
+The payoff is 7.1's problem from the other end: a builder's contact sheets and a critic's
+inspections never enter the parent's context. The parent pays for one line each.
+
+The prompt makes delegation the rule, not an option. Anything with parts of its own is an asset,
+every asset module is written by a builder, and a scene with assets is judged by a critic before
+it is called finished. A model left to choose built a whole dining room inline in `scene.py`
+without touching the tool; a directive prompt, tested on the same request, spawned the builders
+first.
 
 ---
 
