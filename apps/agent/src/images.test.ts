@@ -68,6 +68,36 @@ describe('stubImages', () => {
     ])
   })
 
+  it('preserves the recipe for physics renders', () => {
+    const view = { azimuth: 20, elevation: 35, framing: 'scene' }
+    const inspection = result(
+      'inspect_physics',
+      [text('Physics is valid.'), image],
+      { view, physics: true },
+    )
+    const stubbed = stubImages(inspection)
+    if (stubbed.role !== 'toolResult') throw new Error('role changed')
+    expect(stubbed.content).toEqual([
+      text('Physics is valid.'),
+      text(
+        '[physics render — the whole scene in scene.glb at azimuth 20°, elevation 35°, with collision proxies and the player spawn shown. Re-run inspect_physics to look again.]',
+      ),
+    ])
+
+    const preview = result('preview_asset', [text('front:'), image], {
+      name: 'chair',
+      physics: true,
+      shots: [{ label: 'the front', view }],
+    })
+    const previewStub = stubImages(preview)
+    if (previewStub.role !== 'toolResult') throw new Error('role changed')
+    expect(previewStub.content[1]).toEqual(
+      text(
+        '[physics render — "chair" from the front (azimuth 20°, elevation 35°), with collision proxies shown. Re-run preview_asset with physics=true to look again.]',
+      ),
+    )
+  })
+
   it('returns the same object when there is nothing to stub', () => {
     const plain = result('read', [text('print(1)')])
     expect(stubImages(plain)).toBe(plain)

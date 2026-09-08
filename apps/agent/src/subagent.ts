@@ -20,7 +20,7 @@ export function spawnSubagentTool(services: () => AgentSessionServices) {
   return defineTool({
     name: 'spawn_subagent',
     label: 'Delegate',
-    description: `Hand a task to a subagent that works on its own session and reports back in text; its renders never enter your context. An asset_builder task makes exactly one object or architectural component, never a room or area, in ${ASSETS_DIR}/<name>.py and uses four-sided previews to judge and refine it until it is high fidelity. A critic task looks at the built scene from any angles it chooses and reports what is wrong against the request; build with run_blender first. Spawn separate builders together to run them in parallel.`,
+    description: `Hand a task to a subagent that works on its own session and reports back in text; its renders never enter your context. An asset_builder task makes exactly one object or architectural component, never a room or area, in ${ASSETS_DIR}/<name>.py and uses visual and physics previews as needed to refine its render geometry and collision representation until they are high fidelity. A critic looks at the built scene and its physics from angles it chooses and reports what is wrong against the request; build with run_blender first. Spawn separate builders together to run them in parallel.`,
     promptSnippet:
       'hand a task to an asset builder or a critic on its own session',
     executionMode: 'parallel',
@@ -33,7 +33,7 @@ export function spawnSubagentTool(services: () => AgentSessionServices) {
       ),
       task: Type.String({
         description:
-          'For asset_builder, a self-contained brief for exactly one object: its dimensions in metres, proportions, construction details, materials and colours, style, orientation, origin, adjacent dimensions it must match, and the required high-poly fidelity. Never brief a room, area, or collection. For critic, what was asked for and what to judge.',
+          'For asset_builder, a self-contained brief for exactly one object: its dimensions in metres, proportions, construction details, materials and colours, style, orientation, origin, adjacent dimensions it must match, unique instance naming, whether it is solid or penetrable, its simplified collision shape when solid, and the required high-poly fidelity. Never brief a room, area, or collection. For critic, what was asked for and what visual and playable physics to judge.',
       }),
       name: Type.Optional(
         Type.String({

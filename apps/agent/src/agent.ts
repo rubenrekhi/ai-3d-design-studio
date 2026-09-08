@@ -13,7 +13,12 @@ import {
 import type { BuildReport, Commit } from '@repo/shared'
 import { studioExtension } from './extension'
 import { SCENE_BUILDER_PROMPT } from './prompt'
-import { inspectSceneTool, previewAssetTool, runBlenderTool } from './tools'
+import {
+  inspectPhysicsTool,
+  inspectSceneTool,
+  previewAssetTool,
+  runBlenderTool,
+} from './tools'
 
 /**
  * `bash` is deliberately absent. The harness has to be able to promise that a
@@ -30,6 +35,7 @@ const STUDIO_TOOLS = [
   'grep',
   runBlenderTool.name,
   inspectSceneTool.name,
+  inspectPhysicsTool.name,
   previewAssetTool.name,
   'spawn_subagent',
 ]
@@ -109,7 +115,12 @@ export async function createStudioAgent(
       sessionStartEvent,
       model: opts.model,
       tools: STUDIO_TOOLS,
-      customTools: [runBlenderTool, inspectSceneTool, previewAssetTool],
+      customTools: [
+        runBlenderTool,
+        inspectSceneTool,
+        inspectPhysicsTool,
+        previewAssetTool,
+      ],
     })
     return { ...created, services, diagnostics: services.diagnostics }
   }
