@@ -29,6 +29,8 @@ import {
 import type { SceneViewerInfo, SpawnDescription } from './types'
 
 const SHADOW_MAP_SIZE = 2048
+const SHADOW_BIAS = -0.0005
+const SHADOW_NORMAL_BIAS = 0.015
 
 export interface ColliderDescription {
   name: string
@@ -214,7 +216,8 @@ export function castShadows(
 
   light.castShadow = true
   light.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE)
-  light.shadow.normalBias = 0.02
+  light.shadow.bias = SHADOW_BIAS
+  light.shadow.normalBias = SHADOW_NORMAL_BIAS
 
   if (!(light instanceof DirectionalLight)) {
     light.shadow.camera.far = bounds.radius * 4

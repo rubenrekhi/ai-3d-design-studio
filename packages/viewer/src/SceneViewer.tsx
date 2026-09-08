@@ -25,7 +25,15 @@ import {
   TrimeshCollider,
 } from '@react-three/rapier'
 import { Ecctrl, type EcctrlHandle } from 'ecctrl'
-import { DirectionalLight, Quaternion, Scene, Sphere, Vector3 } from 'three'
+import {
+  AgXToneMapping,
+  DirectionalLight,
+  PCFShadowMap,
+  Quaternion,
+  Scene,
+  Sphere,
+  Vector3,
+} from 'three'
 import { SkyMesh } from 'three/addons/objects/SkyMesh.js'
 import { PMREMGenerator, WebGPURenderer, type Renderer } from 'three/webgpu'
 import {
@@ -35,7 +43,6 @@ import {
   type ColliderDescription,
   type SkyDescription,
 } from './prepare'
-import { skyDisplayScale, skyEnvironmentIntensity } from './sky'
 import type {
   PlayerTuning,
   SceneViewerInfo,
@@ -46,6 +53,24 @@ import type {
 
 /** Wide enough to enclose any scene the harness builds, inside the camera's far plane. */
 const SKY_SIZE = 2000
+/**
+ * AgX holds a highlight far longer than ACES before it gives up and goes white,
+ * which is the whole problem with a sky: its brightest parts are hundreds of
+ * times its darkest, and ACES flattens everything above the middle of that
+ * range into paper. Exposure sits below 1 for the same reason.
+ */
+const EXPOSURE = 0.8
+/**
+ * The sky is a light source of its own, and these scenes already carry an
+ * authored sun. Left near 1 it doubles the scene's illumination from every
+ * direction at once and washes it out; this is the share that reads as skylight
+ * beside a sun rather than replacing it.
+ */
+const ENVIRONMENT_INTENSITY = 0.08
+/** Thin haze, so blue survives down toward the horizon instead of whitening. */
+const SKY_MIE_COEFFICIENT = 0.003
+const SKY_MIE_DIRECTIONAL_G = 0.82
+const SKY_RAYLEIGH = 1.8
 const PLAYER_FLOAT_HEIGHT = 0.2
 /**
  * Ecctrl's spring, damping and acceleration defaults are tuned around a capsule
@@ -299,7 +324,7 @@ function LoadedScene({
 
   return (
     <>
-      <StaticShadows key={src} />
+      <RendererSettings key={src} />
       {prepared.sky !== undefined ? (
         <Sky sky={prepared.sky} center={prepared.bounds.center} />
       ) : null}
@@ -591,10 +616,24 @@ function SpawnDebug({ spawn }: { spawn: SpawnDescription }) {
  * shadow map each frame redraws an identical image. Rendering it once and
  * holding it is the difference between a scene that runs and one that crawls.
  */
-function StaticShadows() {
+function tuneSky(mesh: SkyMesh, sky: SkyDescription): void {
+  mesh.turbidity.value = sky.turbidity
+  mesh.rayleigh.value = SKY_RAYLEIGH
+  mesh.mieCoefficient.value = SKY_MIE_COEFFICIENT
+  mesh.mieDirectionalG.value = SKY_MIE_DIRECTIONAL_G
+  mesh.cloudCoverage.value = sky.cloudCoverage
+  mesh.sunPosition.value.copy(sky.sunDirection)
+}
+
+function RendererSettings() {
   const gl = useThree((state) => state.gl)
 
   useEffect(() => {
+    // R3F picks ACES at exposure 1 while configuring the canvas, so this has to
+    // run after it rather than in the renderer factory.
+    gl.toneMapping = AgXToneMapping
+    gl.toneMappingExposure = EXPOSURE
+    gl.shadowMap.type = PCFShadowMap
     gl.shadowMap.autoUpdate = false
     gl.shadowMap.needsUpdate = true
     return () => {
@@ -614,20 +653,12 @@ function Sky({ sky, center }: { sky: SkyDescription; center: Vector3 }) {
     // Only what is drawn is exposed. The copy the environment map is built from
     // stays at the model's own scale, which is what `skyEnvironmentIntensity`
     // divides out.
-    const drawn = value.material.colorNode
-    if (drawn !== null) {
-      value.material.colorNode = drawn.mul(
-        skyDisplayScale(sky, sky.sunDirection.y),
-      )
-    }
     return value
-  }, [sky])
+  }, [])
 
   useEffect(() => {
     mesh.position.copy(center)
-    mesh.turbidity.value = sky.turbidity
-    mesh.cloudCoverage.value = sky.cloudCoverage
-    mesh.sunPosition.value.copy(sky.sunDirection)
+    tuneSky(mesh, sky)
     mesh.showSunDisc.value = true
   }, [mesh, sky, center])
 
@@ -638,9 +669,7 @@ function Sky({ sky, center }: { sky: SkyDescription; center: Vector3 }) {
     const staging = new Scene()
     const source = new SkyMesh()
     source.scale.setScalar(SKY_SIZE)
-    source.turbidity.value = sky.turbidity
-    source.cloudCoverage.value = sky.cloudCoverage
-    source.sunPosition.value.copy(sky.sunDirection)
+    tuneSky(source, sky)
     // Prefiltering turns the disc into a ringing hotspot, and the sun is
     // already in the scene as a light.
     source.showSunDisc.value = false
@@ -648,11 +677,7 @@ function Sky({ sky, center }: { sky: SkyDescription; center: Vector3 }) {
 
     const target = generator.fromScene(staging)
     scene.environment = target.texture
-    scene.environmentIntensity = skyEnvironmentIntensity(
-      sky,
-      sky.sunDirection.y,
-      sky.sunIntensity,
-    )
+    scene.environmentIntensity = ENVIRONMENT_INTENSITY
     generator.dispose()
     source.geometry.dispose()
     source.material.dispose()

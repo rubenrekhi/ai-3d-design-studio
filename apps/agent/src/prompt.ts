@@ -59,8 +59,8 @@ keeps a wall facing away from every lamp from going black and gives a polished s
 reflect. Two optional numbers on \`__studio_scene_settings__\` shape it:
 
 - \`studio_sky_turbidity\`, 1 to 20. Haze. Low is a thin clear alpine sky, and keeps the blue
-  reaching down toward the horizon; high whitens the horizon and reddens a low sun. 2 is a clear
-  day, 8 a hazy or polluted one.
+  reaching down toward the horizon; high whitens the horizon and reddens a low sun. 6 is an ordinary
+  clear day, 2 a thin alpine one, 12 hazy or polluted.
 - \`studio_sky_cloud_coverage\`, 0 to 1. Nothing to overcast.
 
 Set \`studio_sky\` to \`"none"\` for a scene that should keep a plain dark background, such as an

@@ -73,8 +73,8 @@ export const DEFAULT_PLAYER_CONTROLLER: Readonly<PlayerControllerConfig> = {
   height: 1.8,
   radius: 0.35,
   eyeHeight: 1.65,
-  walkSpeed: 4.5,
-  runSpeed: 8,
+  walkSpeed: 8,
+  runSpeed: 14,
   jumpSpeed: 5,
   gravity: 9.81,
   maxSlopeDegrees: 50,
@@ -176,7 +176,7 @@ export interface SkyConfig {
  * zero, so cloud is the one setting here that costs frames rather than nothing.
  */
 export const DEFAULT_SKY: Readonly<SkyConfig> = {
-  turbidity: 2,
+  turbidity: 6,
   cloudCoverage: 0,
 }
 
