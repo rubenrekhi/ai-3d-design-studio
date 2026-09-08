@@ -216,10 +216,12 @@ function listen(server: Server, preferred: number): Promise<number> {
 }
 
 function previewAssetsDir(): string {
-  const moduleDir = dirname(fileURLToPath(import.meta.url))
-  const bundled = join(moduleDir, 'preview')
-  const source = resolve(moduleDir, '../../preview/dist')
-  return existsSync(join(bundled, 'index.html')) ? bundled : source
+  const bundled = join(dirname(fileURLToPath(import.meta.url)), 'preview')
+  if (existsSync(join(bundled, 'index.html'))) return bundled
+  const manifest = fileURLToPath(
+    import.meta.resolve('@repo/preview/package.json'),
+  )
+  return join(dirname(manifest), 'dist')
 }
 
 function decodePath(path: string): string {

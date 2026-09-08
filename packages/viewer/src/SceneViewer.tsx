@@ -14,6 +14,7 @@ import {
   KeyboardControls,
   OrbitControls,
   useGLTF,
+  useKeyboardControls,
   useProgress,
 } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
@@ -33,14 +34,40 @@ import {
   type ColliderDescription,
 } from './prepare'
 import type {
+  PlayerTuning,
   SceneViewerInfo,
   SceneViewerProps,
   SpawnDescription,
   ViewerMode,
 } from './types'
 
-const PLAYER_FLOAT_HEIGHT = 0.15
-const KEYBOARD_MAP = [
+const PLAYER_FLOAT_HEIGHT = 0.2
+/**
+ * Ecctrl's spring, damping and acceleration defaults are tuned around a capsule
+ * this size — 1.2 m tall. A human-scale one is over twice the volume, so at the
+ * default density it hangs off the same spring at half the stiffness and the
+ * ride sags and wallows. Matching its mass instead of retuning every constant
+ * keeps the rest of Ecctrl's defaults meaningful.
+ */
+const ECCTRL_TUNED_CAPSULE = { halfHeight: 0.3, radius: 0.3 }
+/**
+ * Ecctrl's two `DeltaTime` props are not times. Each is clamped to 0..1 and
+ * scales an impulse of `mass * coefficient * value`, so 1 cancels or supplies a
+ * whole frame's velocity and 0 does nothing. Braking runs only on the frames
+ * with no move input, so a full 1 stops the player where the key was released
+ * without ever fighting the key that is held.
+ */
+const BRAKE = 1
+const ACCELERATE = 0.6
+/**
+ * Both impulses are also scaled by `clamp((groundFriction + slideGripFactor) / 2, 0, 1)`.
+ * Saturating that clamp keeps stopping and starting identical on every surface
+ * rather than varying with whatever friction a collider happens to carry.
+ */
+const GRIP = 2
+type MovementKey =
+  'forward' | 'backward' | 'leftward' | 'rightward' | 'jump' | 'run'
+const KEYBOARD_MAP: { name: MovementKey; keys: string[] }[] = [
   { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
   { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
   { name: 'leftward', keys: ['ArrowLeft', 'KeyA'] },
@@ -86,10 +113,12 @@ export function SceneViewer({
   const [debug, setDebug] = useState(false)
   const [resetToken, setResetToken] = useState(0)
   const [pointerLocked, setPointerLocked] = useState(false)
+  const [tuning, setTuning] = useState<PlayerTuning>()
 
   useEffect(() => {
     setInfo(undefined)
     setPointerLocked(false)
+    setTuning(undefined)
   }, [src])
 
   useEffect(() => {
@@ -109,6 +138,10 @@ export function SceneViewer({
   const loaded = useCallback(
     (next: SceneViewerInfo) => {
       setInfo(next)
+      if (next.controller !== undefined) {
+        const { walkSpeed, runSpeed, jumpSpeed } = next.controller
+        setTuning({ walkSpeed, runSpeed, jumpSpeed })
+      }
       onLoad?.(next)
     },
     [onLoad],
@@ -145,6 +178,7 @@ export function SceneViewer({
               mode={mode}
               debug={debug}
               resetToken={resetToken}
+              tuning={tuning}
               onLoaded={loaded}
               onPointerLockChange={setPointerLocked}
             />
@@ -187,6 +221,38 @@ export function SceneViewer({
         ) : null}
       </div>
 
+      {mode === 'walk' && tuning !== undefined ? (
+        <div style={panelStyle}>
+          <Slider
+            label="Walk"
+            value={tuning.walkSpeed}
+            min={1}
+            max={20}
+            onChange={(walkSpeed) =>
+              setTuning({
+                ...tuning,
+                walkSpeed,
+                runSpeed: Math.max(tuning.runSpeed, walkSpeed),
+              })
+            }
+          />
+          <Slider
+            label="Run"
+            value={tuning.runSpeed}
+            min={tuning.walkSpeed}
+            max={30}
+            onChange={(runSpeed) => setTuning({ ...tuning, runSpeed })}
+          />
+          <Slider
+            label="Jump"
+            value={tuning.jumpSpeed}
+            min={0}
+            max={20}
+            onChange={(jumpSpeed) => setTuning({ ...tuning, jumpSpeed })}
+          />
+        </div>
+      ) : null}
+
       <div style={helpStyle}>
         {mode === 'walk'
           ? pointerLocked
@@ -203,6 +269,7 @@ function LoadedScene({
   mode,
   debug,
   resetToken,
+  tuning,
   onLoaded,
   onPointerLockChange,
 }: {
@@ -210,6 +277,7 @@ function LoadedScene({
   mode: ViewerMode
   debug: boolean
   resetToken: number
+  tuning: PlayerTuning | undefined
   onLoaded: (info: SceneViewerInfo) => void
   onPointerLockChange: (locked: boolean) => void
 }) {
@@ -228,7 +296,7 @@ function LoadedScene({
     <>
       {!prepared.hasLights ? <FallbackLights bounds={prepared.bounds} /> : null}
       <OrbitControls makeDefault enabled={mode === 'orbit'} />
-      <Bounds fit={mode === 'orbit'} clip margin={1.25}>
+      <Bounds fit={mode === 'orbit'} margin={1.25}>
         <primitive object={prepared.visual} dispose={null} />
       </Bounds>
       <KeyboardControls map={KEYBOARD_MAP}>
@@ -238,12 +306,13 @@ function LoadedScene({
           gravity={[0, -(prepared.spawn?.controller.gravity ?? 9.81), 0]}
         >
           <SceneColliders colliders={prepared.colliders} />
-          {prepared.spawn ? (
+          {prepared.spawn && tuning !== undefined ? (
             <Player
               active={mode === 'walk'}
               debug={debug}
               resetToken={resetToken}
               spawn={prepared.spawn}
+              tuning={tuning}
               onPointerLockChange={onPointerLockChange}
             />
           ) : null}
@@ -280,12 +349,14 @@ function Player({
   debug,
   resetToken,
   spawn,
+  tuning,
   onPointerLockChange,
 }: {
   active: boolean
   debug: boolean
   resetToken: number
   spawn: SpawnDescription
+  tuning: PlayerTuning
   onPointerLockChange: (locked: boolean) => void
 }) {
   const controller = useRef<EcctrlHandle>(null)
@@ -293,34 +364,36 @@ function Player({
   const config = spawn.controller
   const capsuleHalfHeight = (config.height - config.radius * 2) / 2
   const position = playerBodyPosition(spawn)
+  const density =
+    capsuleVolume(
+      ECCTRL_TUNED_CAPSULE.halfHeight,
+      ECCTRL_TUNED_CAPSULE.radius,
+    ) / capsuleVolume(capsuleHalfHeight, config.radius)
 
   useEffect(() => {
     onPointerLockChange(locked)
   }, [locked, onPointerLockChange])
 
-  useEffect(() => {
-    if (!active || locked) return
-    controller.current?.setMovement({
-      forward: false,
-      backward: false,
-      leftward: false,
-      rightward: false,
-      run: false,
-      jump: false,
-    })
-  }, [active, locked])
-
   return (
     <>
+      <Movement controller={controller} enabled={active && locked} />
       <Ecctrl
         ref={controller}
         position={position}
-        enable={active && locked}
+        // Enabled by the mode alone. Ecctrl short-circuits its whole frame when
+        // disabled, so `currPos` would never leave the origin and the camera
+        // this drives would sit inside the building until the pointer locked.
+        // Pointer lock gates input and mouse look, not the body.
+        enable={active}
         capsuleHalfHeight={capsuleHalfHeight}
         capsuleRadius={config.radius}
-        maxWalkVel={config.walkSpeed}
-        maxRunVel={config.runSpeed}
-        jumpVel={config.jumpSpeed}
+        density={density}
+        maxWalkVel={tuning.walkSpeed}
+        maxRunVel={tuning.runSpeed}
+        jumpVel={tuning.jumpSpeed}
+        accDeltaTime={ACCELERATE}
+        decDeltaTime={BRAKE}
+        slideGripFactor={GRIP}
         slopeMaxAngle={(config.maxSlopeDegrees * Math.PI) / 180}
         floatHeight={PLAYER_FLOAT_HEIGHT}
         enableToggleRun={false}
@@ -336,6 +409,56 @@ function Player({
       {debug ? <SpawnDebug spawn={spawn} /> : null}
     </>
   )
+}
+
+const STILL = {
+  forward: false,
+  backward: false,
+  leftward: false,
+  rightward: false,
+  run: false,
+  jump: false,
+}
+
+/**
+ * Ecctrl 2 listens for no keys of its own — its only input is `setMovement`,
+ * which the host is expected to call every frame. `KeyboardControls` supplies
+ * the state; without this the map is wired to nothing and the player is a
+ * statue.
+ */
+function Movement({
+  controller,
+  enabled,
+}: {
+  controller: React.RefObject<EcctrlHandle | null>
+  enabled: boolean
+}) {
+  const [, getKeys] = useKeyboardControls<MovementKey>()
+  const moving = useRef(false)
+
+  useFrame(() => {
+    const handle = controller.current
+    if (handle === null) return
+    if (!enabled) {
+      if (moving.current) {
+        handle.setMovement(STILL)
+        moving.current = false
+      }
+      return
+    }
+    const keys = getKeys()
+    handle.setMovement({
+      forward: keys.forward,
+      backward: keys.backward,
+      leftward: keys.leftward,
+      rightward: keys.rightward,
+      run: keys.run,
+      jump: keys.jump,
+    })
+    moving.current = true
+  })
+
+  return null
 }
 
 function FirstPersonCamera({
@@ -467,6 +590,12 @@ function FallbackLights({ bounds }: { bounds: Sphere }) {
   )
 }
 
+function capsuleVolume(halfHeight: number, radius: number): number {
+  return (
+    Math.PI * radius ** 2 * halfHeight * 2 + (4 / 3) * Math.PI * radius ** 3
+  )
+}
+
 function playerBodyPosition(spawn: SpawnDescription): [number, number, number] {
   return [
     spawn.position[0],
@@ -540,6 +669,59 @@ const toolbarStyle: React.CSSProperties = {
   borderRadius: 10,
   background: 'rgba(12,14,18,0.86)',
   backdropFilter: 'blur(12px)',
+}
+
+function Slider({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label style={sliderStyle}>
+      <span style={{ width: 34 }}>{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={0.5}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        style={{ width: 96, accentColor: '#f4f4f5' }}
+      />
+      <span style={{ width: 42, textAlign: 'right' }}>{value.toFixed(1)}</span>
+    </label>
+  )
+}
+
+const panelStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 66,
+  left: 16,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  padding: '10px 12px',
+  border: '1px solid rgba(255,255,255,0.14)',
+  borderRadius: 10,
+  background: 'rgba(12,14,18,0.86)',
+  backdropFilter: 'blur(12px)',
+  color: '#d4d4d8',
+  font: '11px/1 system-ui, sans-serif',
+}
+
+const sliderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  cursor: 'pointer',
 }
 
 const helpStyle: React.CSSProperties = {

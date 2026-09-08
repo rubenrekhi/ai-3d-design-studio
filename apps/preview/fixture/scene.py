@@ -3,7 +3,7 @@ from pathlib import Path
 import bpy
 
 
-ROOT = Path(__file__).resolve().parents[1]
+HERE = Path(__file__).resolve().parent
 
 
 def material(name, color, roughness=0.6, metallic=0.0):
@@ -97,7 +97,7 @@ sun.rotation_euler = (1.28, 0.0, 2.4)
 bpy.context.scene.collection.objects.link(sun)
 
 bpy.ops.export_scene.gltf(
-    filepath=str(ROOT / "public" / "scene.glb"),
+    filepath=str(HERE / "scene.glb"),
     export_apply=True,
     export_extras=True,
     export_lights=True,
