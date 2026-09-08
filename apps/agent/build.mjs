@@ -1,4 +1,4 @@
-import { cp } from 'node:fs/promises'
+import { cp, rm, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,6 +6,7 @@ import { build } from 'esbuild'
 
 const here = (path) => fileURLToPath(new URL(path, import.meta.url))
 const outdir = here('dist')
+const preview = here('../preview/dist')
 const piRoot = dirname(
   dirname(
     fileURLToPath(import.meta.resolve('@earendil-works/pi-coding-agent')),
@@ -44,6 +45,14 @@ const wasm = createRequire(join(piRoot, 'index.js')).resolve(
   '@silvia-odwyer/photon-node/photon_rs_bg.wasm',
 )
 await cp(wasm, join(outdir, 'photon_rs_bg.wasm'))
+
+try {
+  await stat(join(preview, 'index.html'))
+} catch {
+  throw new Error('Build @repo/preview before building @repo/agent.')
+}
+await rm(join(outdir, 'preview'), { recursive: true, force: true })
+await cp(preview, join(outdir, 'preview'), { recursive: true })
 
 // Pi reads these at run time instead of importing them, so the bundler cannot
 // see them. The layout is pi's own: `<PI_PACKAGE_DIR>/dist/<path>`.

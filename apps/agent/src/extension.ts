@@ -32,6 +32,12 @@ export interface StudioExtensionOptions {
   onBuild?: (build: BuildReport) => void
   /** The services this extension's own session was built from, once they exist. */
   services: () => AgentSessionServices
+  /** Human-only local preview command. Omitted in protocol mode. */
+  onRender?: (
+    workdir: string,
+  ) => Promise<{ url: string; opened: boolean; reused: boolean }>
+  /** Tells an already-open local preview that its artifact changed. */
+  onSceneBuilt?: (workdir: string) => void
 }
 
 export function studioExtension(opts: StudioExtensionOptions): InlineExtension {
@@ -48,6 +54,35 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   let guardError: string | undefined
 
   pi.registerTool(spawnSubagentTool(opts.services))
+
+  const render = opts.onRender
+  if (render !== undefined) {
+    pi.registerCommand('render', {
+      description: 'Open the current scene in the playable web viewer',
+      handler: async (args, ctx) => {
+        if (args.trim() !== '') {
+          ctx.ui.notify('/render takes no arguments', 'warning')
+          return
+        }
+        await ctx.waitForIdle()
+        try {
+          const preview = await render(ctx.cwd)
+          const action = preview.reused ? 'Reopened' : 'Opened'
+          ctx.ui.notify(
+            preview.opened
+              ? `${action} playable preview: ${preview.url}`
+              : `Playable preview is ready at ${preview.url}`,
+            preview.opened ? 'info' : 'warning',
+          )
+        } catch (error) {
+          ctx.ui.notify(
+            error instanceof Error ? error.message : String(error),
+            'error',
+          )
+        }
+      },
+    })
+  }
 
   // Pi starts a fresh loop for every continuation — the guard's follow-up, a
   // retry, a compaction — and a run is the whole of them, so only the first
@@ -84,6 +119,7 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   pi.on('tool_result', async (event, ctx) => {
     if (event.toolName === runBlenderTool.name && !event.isError) {
       lastGoodBuild = await hashTree(ctx.cwd)
+      opts.onSceneBuilt?.(ctx.cwd)
     }
   })
 
@@ -103,6 +139,7 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
     if (build.ok) {
       lastGoodBuild = await hashTree(ctx.cwd)
       guardRounds = 0
+      opts.onSceneBuilt?.(ctx.cwd)
       return
     }
 

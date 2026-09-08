@@ -34,13 +34,19 @@ RUN npm install -g pnpm@${PNPM_VERSION}
 WORKDIR /repo
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/agent/package.json apps/agent/
+COPY apps/preview/package.json apps/preview/
 COPY apps/web/package.json apps/web/
+COPY packages/scene-contract/package.json packages/scene-contract/
 COPY packages/shared/package.json packages/shared/
+COPY packages/viewer/package.json packages/viewer/
 RUN pnpm install --frozen-lockfile --filter @repo/agent... --filter ai-3d-design-studio
 COPY tsconfig.base.json ./
+COPY packages/scene-contract packages/scene-contract
 COPY packages/shared packages/shared
+COPY packages/viewer packages/viewer
+COPY apps/preview apps/preview
 COPY apps/agent apps/agent
-RUN pnpm --filter @repo/agent build
+RUN pnpm --filter @repo/agent... build
 
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 # Blender first: it is 1.2 GB, and buildx re-caches every layer under an edited
