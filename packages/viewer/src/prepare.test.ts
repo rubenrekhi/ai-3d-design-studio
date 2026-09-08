@@ -161,7 +161,7 @@ describe('prepareScene', () => {
 
   it('reads the Blender-exported fixture contract', async () => {
     const file = await readFile(
-      new URL('../../../apps/preview/public/scene.glb', import.meta.url),
+      new URL('../../../apps/preview/fixture/scene.glb', import.meta.url),
     )
     const bytes = file.buffer.slice(
       file.byteOffset,

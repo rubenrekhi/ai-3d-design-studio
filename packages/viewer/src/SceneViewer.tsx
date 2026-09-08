@@ -14,6 +14,7 @@ import {
   KeyboardControls,
   OrbitControls,
   useGLTF,
+  useKeyboardControls,
   useProgress,
 } from '@react-three/drei'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
@@ -40,7 +41,9 @@ import type {
 } from './types'
 
 const PLAYER_FLOAT_HEIGHT = 0.15
-const KEYBOARD_MAP = [
+type MovementKey =
+  'forward' | 'backward' | 'leftward' | 'rightward' | 'jump' | 'run'
+const KEYBOARD_MAP: { name: MovementKey; keys: string[] }[] = [
   { name: 'forward', keys: ['ArrowUp', 'KeyW'] },
   { name: 'backward', keys: ['ArrowDown', 'KeyS'] },
   { name: 'leftward', keys: ['ArrowLeft', 'KeyA'] },
@@ -228,7 +231,7 @@ function LoadedScene({
     <>
       {!prepared.hasLights ? <FallbackLights bounds={prepared.bounds} /> : null}
       <OrbitControls makeDefault enabled={mode === 'orbit'} />
-      <Bounds fit={mode === 'orbit'} clip margin={1.25}>
+      <Bounds fit={mode === 'orbit'} margin={1.25}>
         <primitive object={prepared.visual} dispose={null} />
       </Bounds>
       <KeyboardControls map={KEYBOARD_MAP}>
@@ -298,24 +301,17 @@ function Player({
     onPointerLockChange(locked)
   }, [locked, onPointerLockChange])
 
-  useEffect(() => {
-    if (!active || locked) return
-    controller.current?.setMovement({
-      forward: false,
-      backward: false,
-      leftward: false,
-      rightward: false,
-      run: false,
-      jump: false,
-    })
-  }, [active, locked])
-
   return (
     <>
+      <Movement controller={controller} enabled={active && locked} />
       <Ecctrl
         ref={controller}
         position={position}
-        enable={active && locked}
+        // Enabled by the mode alone. Ecctrl short-circuits its whole frame when
+        // disabled, so `currPos` would never leave the origin and the camera
+        // this drives would sit inside the building until the pointer locked.
+        // Pointer lock gates input and mouse look, not the body.
+        enable={active}
         capsuleHalfHeight={capsuleHalfHeight}
         capsuleRadius={config.radius}
         maxWalkVel={config.walkSpeed}
@@ -336,6 +332,56 @@ function Player({
       {debug ? <SpawnDebug spawn={spawn} /> : null}
     </>
   )
+}
+
+const STILL = {
+  forward: false,
+  backward: false,
+  leftward: false,
+  rightward: false,
+  run: false,
+  jump: false,
+}
+
+/**
+ * Ecctrl 2 listens for no keys of its own — its only input is `setMovement`,
+ * which the host is expected to call every frame. `KeyboardControls` supplies
+ * the state; without this the map is wired to nothing and the player is a
+ * statue.
+ */
+function Movement({
+  controller,
+  enabled,
+}: {
+  controller: React.RefObject<EcctrlHandle | null>
+  enabled: boolean
+}) {
+  const [, getKeys] = useKeyboardControls<MovementKey>()
+  const moving = useRef(false)
+
+  useFrame(() => {
+    const handle = controller.current
+    if (handle === null) return
+    if (!enabled) {
+      if (moving.current) {
+        handle.setMovement(STILL)
+        moving.current = false
+      }
+      return
+    }
+    const keys = getKeys()
+    handle.setMovement({
+      forward: keys.forward,
+      backward: keys.backward,
+      leftward: keys.leftward,
+      rightward: keys.rightward,
+      run: keys.run,
+      jump: keys.jump,
+    })
+    moving.current = true
+  })
+
+  return null
 }
 
 function FirstPersonCamera({
