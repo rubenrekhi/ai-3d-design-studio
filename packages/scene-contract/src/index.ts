@@ -65,19 +65,21 @@ export interface PlayerControllerConfig {
 }
 
 /**
- * Speeds read slower through a 50° first-person camera than they do on foot,
- * because the peripheral vision that sells motion is missing. These are what a
- * brisk walk and a run feel like on screen, not what they measure in life.
+ * Taken from the navigation contract of a viewer whose movement reads well: a
+ * body of this height and radius moving at 10 m/s. Speeds read slower through a
+ * 50° first-person camera than they do on foot, because the peripheral vision
+ * that sells motion is missing, so these are screen figures rather than real
+ * ones.
  */
 export const DEFAULT_PLAYER_CONTROLLER: Readonly<PlayerControllerConfig> = {
   height: 1.8,
   radius: 0.35,
-  eyeHeight: 1.65,
-  walkSpeed: 8,
-  runSpeed: 14,
-  jumpSpeed: 5,
-  gravity: 9.81,
-  maxSlopeDegrees: 50,
+  eyeHeight: 1.7,
+  walkSpeed: 10,
+  runSpeed: 16,
+  jumpSpeed: 4.5,
+  gravity: 9.8,
+  maxSlopeDegrees: 45,
   fallResetDistance: 12,
 }
 

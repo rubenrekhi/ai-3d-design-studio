@@ -71,6 +71,12 @@ const ENVIRONMENT_INTENSITY = 0.08
 const SKY_MIE_COEFFICIENT = 0.003
 const SKY_MIE_DIRECTIONAL_G = 0.82
 const SKY_RAYLEIGH = 1.8
+/**
+ * Scroll felt harsh at the default and sluggish once slowed down. The fix is
+ * not speed: damping carries the motion on after the wheel stops, so the same
+ * step arrives smoothly.
+ */
+const ORBIT_DAMPING = 0.075
 const PLAYER_FLOAT_HEIGHT = 0.2
 /**
  * Ecctrl's spring, damping and acceleration defaults are tuned around a capsule
@@ -82,13 +88,17 @@ const PLAYER_FLOAT_HEIGHT = 0.2
 const ECCTRL_TUNED_CAPSULE = { halfHeight: 0.3, radius: 0.3 }
 /**
  * Ecctrl's two `DeltaTime` props are not times. Each is clamped to 0..1 and
- * scales an impulse of `mass * coefficient * value`, so 1 cancels or supplies a
- * whole frame's velocity and 0 does nothing. Braking runs only on the frames
- * with no move input, so a full 1 stops the player where the key was released
- * without ever fighting the key that is held.
+ * scales an impulse of `mass * coefficient * value`, so it is the fraction of
+ * the gap to target speed closed each frame.
+ *
+ * These are the response rates from the navigation contract of a viewer whose
+ * movement reads well — 12 per second toward speed, 18 per second back to a
+ * stop — converted through `1 - e^(-rate / 60)`. Stopping reaches a twentieth
+ * of walking pace in about a sixth of a second: crisp without the dead snap of
+ * cancelling all velocity in a single frame.
  */
-const BRAKE = 1
-const ACCELERATE = 0.6
+const ACCELERATE = 0.181
+const BRAKE = 0.259
 /**
  * Both impulses are also scaled by `clamp((groundFriction + slideGripFactor) / 2, 0, 1)`.
  * Saturating that clamp keeps stopping and starting identical on every surface
@@ -329,7 +339,14 @@ function LoadedScene({
         <Sky sky={prepared.sky} center={prepared.bounds.center} />
       ) : null}
       {!prepared.hasLights ? <FallbackLights bounds={prepared.bounds} /> : null}
-      <OrbitControls makeDefault enabled={mode === 'orbit'} zoomSpeed={0.4} />
+      <OrbitControls
+        makeDefault
+        enabled={mode === 'orbit'}
+        enableDamping
+        dampingFactor={ORBIT_DAMPING}
+        minDistance={Math.max(prepared.bounds.radius * 0.002, 0.01)}
+        maxDistance={Math.max(prepared.bounds.radius * 24, 25)}
+      />
       <Bounds fit={mode === 'orbit'} margin={1.25}>
         <primitive object={prepared.visual} dispose={null} />
       </Bounds>
