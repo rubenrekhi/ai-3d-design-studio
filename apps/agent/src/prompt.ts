@@ -58,8 +58,9 @@ An environment gets a sky drawn from that sun, and the sky lights the scene in t
 keeps a wall facing away from every lamp from going black and gives a polished surface something to
 reflect. Two optional numbers on \`__studio_scene_settings__\` shape it:
 
-- \`studio_sky_turbidity\`, 1 to 20. Haze. Low is a thin clear alpine sky; high is heavy and
-  reddens a low sun. Around 3 is a clear day, 8 a hazy or polluted one.
+- \`studio_sky_turbidity\`, 1 to 20. Haze. Low is a thin clear alpine sky, and keeps the blue
+  reaching down toward the horizon; high whitens the horizon and reddens a low sun. 2 is a clear
+  day, 8 a hazy or polluted one.
 - \`studio_sky_cloud_coverage\`, 0 to 1. Nothing to overcast.
 
 Set \`studio_sky\` to \`"none"\` for a scene that should keep a plain dark background, such as an

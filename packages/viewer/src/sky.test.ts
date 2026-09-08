@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { averageRadiance, skyEnvironmentIntensity } from './sky'
+import {
+  averageRadiance,
+  skyDisplayScale,
+  skyEnvironmentIntensity,
+} from './sky'
 
 const clear = { turbidity: 3, cloudCoverage: 0 }
 const elevation = (degrees: number) => Math.sin((degrees * Math.PI) / 180)
@@ -40,5 +44,28 @@ describe('skyEnvironmentIntensity', () => {
     const intensity = skyEnvironmentIntensity(clear, elevation(-10), 0.5)
     expect(intensity).toBeLessThanOrEqual(10)
     expect(intensity * averageRadiance(clear, elevation(-10))).toBeLessThan(0.1)
+  })
+})
+
+describe('skyDisplayScale', () => {
+  it('brings the sky a person looks level at out of clipping', () => {
+    // Unscaled, everything below ~30 degrees flattens to white; these land the
+    // whole-sphere average near 0.8 instead, whatever the hour.
+    for (const degrees of [70, 45, 16.7, 5]) {
+      const config = { turbidity: 2, cloudCoverage: 0 }
+      const scale = skyDisplayScale(config, elevation(degrees))
+      const exposed = scale * averageRadiance(config, elevation(degrees))
+      expect(exposed).toBeGreaterThan(0.5)
+      expect(exposed).toBeLessThan(1.1)
+    }
+  })
+
+  it('opens up rather than dividing by nothing once the sun is down', () => {
+    const scale = skyDisplayScale(
+      { turbidity: 2, cloudCoverage: 0 },
+      elevation(-10),
+    )
+    expect(scale).toBeLessThanOrEqual(4)
+    expect(scale).toBeGreaterThan(0)
   })
 })

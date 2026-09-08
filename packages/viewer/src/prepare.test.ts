@@ -159,7 +159,7 @@ describe('prepareScene', () => {
     if (prepared.sky === undefined) throw new Error('missing sky')
     // Aimed straight down, so the sun sits directly overhead.
     expect(prepared.sky.sunDirection.y).toBeCloseTo(1)
-    expect(prepared.sky.turbidity).toBe(3)
+    expect(prepared.sky.turbidity).toBe(2)
     expect(prepared.sky.sunIntensity).toBe(3)
     // Clear unless the scene asks for cloud: the noise is the sky's only real cost.
     expect(prepared.sky.cloudCoverage).toBe(0)

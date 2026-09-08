@@ -35,7 +35,7 @@ import {
   type ColliderDescription,
   type SkyDescription,
 } from './prepare'
-import { skyEnvironmentIntensity } from './sky'
+import { skyDisplayScale, skyEnvironmentIntensity } from './sky'
 import type {
   PlayerTuning,
   SceneViewerInfo,
@@ -304,7 +304,7 @@ function LoadedScene({
         <Sky sky={prepared.sky} center={prepared.bounds.center} />
       ) : null}
       {!prepared.hasLights ? <FallbackLights bounds={prepared.bounds} /> : null}
-      <OrbitControls makeDefault enabled={mode === 'orbit'} />
+      <OrbitControls makeDefault enabled={mode === 'orbit'} zoomSpeed={0.4} />
       <Bounds fit={mode === 'orbit'} margin={1.25}>
         <primitive object={prepared.visual} dispose={null} />
       </Bounds>
@@ -611,8 +611,17 @@ function Sky({ sky, center }: { sky: SkyDescription; center: Vector3 }) {
   const mesh = useMemo(() => {
     const value = new SkyMesh()
     value.scale.setScalar(SKY_SIZE)
+    // Only what is drawn is exposed. The copy the environment map is built from
+    // stays at the model's own scale, which is what `skyEnvironmentIntensity`
+    // divides out.
+    const drawn = value.material.colorNode
+    if (drawn !== null) {
+      value.material.colorNode = drawn.mul(
+        skyDisplayScale(sky, sky.sunDirection.y),
+      )
+    }
     return value
-  }, [])
+  }, [sky])
 
   useEffect(() => {
     mesh.position.copy(center)

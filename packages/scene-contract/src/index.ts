@@ -176,7 +176,7 @@ export interface SkyConfig {
  * zero, so cloud is the one setting here that costs frames rather than nothing.
  */
 export const DEFAULT_SKY: Readonly<SkyConfig> = {
-  turbidity: 3,
+  turbidity: 2,
   cloudCoverage: 0,
 }
 

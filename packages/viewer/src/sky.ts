@@ -7,6 +7,16 @@ import type { SkyConfig } from '@repo/scene-contract'
 const AMBIENT_SHARE = 0.18
 /** A near-black night sky must not be amplified into coloured noise. */
 const MAX_INTENSITY = 10
+/**
+ * What the sky's whole-sphere average should come out at on screen. The model
+ * spans roughly 0.1 at the zenith to 60 near the sun, and a tone curve fed that
+ * range flattens everything below thirty degrees to white — which is most of
+ * what you see looking level. Holding the average here keeps the horizon pale
+ * and the blue reaching down into the part of the sky a person is looking at.
+ */
+const TARGET_AVERAGE = 0.8
+const MIN_DISPLAY_SCALE = 0.05
+const MAX_DISPLAY_SCALE = 4
 /** Enough to converge the integral below; it is smooth and settles by ~32. */
 const SAMPLES = 32
 
@@ -49,6 +59,20 @@ export function skyEnvironmentIntensity(
   const radiance = averageRadiance(config, sunHeight)
   if (radiance <= 0) return 0
   return Math.min((AMBIENT_SHARE * sunIntensity) / radiance, MAX_INTENSITY)
+}
+
+/**
+ * The sky is far brighter at noon than at dusk, so a fixed scale would clip one
+ * and black out the other. Exposing it against its own average lets each hour
+ * land in the same readable range, the way a camera would.
+ */
+export function skyDisplayScale(config: SkyConfig, sunHeight: number): number {
+  const radiance = averageRadiance(config, sunHeight)
+  if (radiance <= 0) return MAX_DISPLAY_SCALE
+  return Math.min(
+    MAX_DISPLAY_SCALE,
+    Math.max(MIN_DISPLAY_SCALE, TARGET_AVERAGE / radiance),
+  )
 }
 
 export function averageRadiance(config: SkyConfig, sunHeight: number): number {
