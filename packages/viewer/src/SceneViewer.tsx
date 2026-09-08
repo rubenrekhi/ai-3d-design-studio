@@ -24,9 +24,10 @@ import {
   TrimeshCollider,
 } from '@react-three/rapier'
 import { Ecctrl, type EcctrlHandle } from 'ecctrl'
-import { Quaternion, Vector3 } from 'three'
+import { DirectionalLight, Quaternion, Sphere, Vector3 } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import {
+  castShadows,
   disposePreparedScene,
   prepareScene,
   type ColliderDescription,
@@ -225,7 +226,7 @@ function LoadedScene({
 
   return (
     <>
-      {!prepared.hasLights ? <FallbackLights /> : null}
+      {!prepared.hasLights ? <FallbackLights bounds={prepared.bounds} /> : null}
       <OrbitControls makeDefault enabled={mode === 'orbit'} />
       <Bounds fit={mode === 'orbit'} clip margin={1.25}>
         <primitive object={prepared.visual} dispose={null} />
@@ -446,16 +447,22 @@ function SpawnDebug({ spawn }: { spawn: SpawnDescription }) {
   )
 }
 
-function FallbackLights() {
+/**
+ * Only reached when the GLB carries no light of its own, which now means the
+ * scene was authored without one rather than that Blender dropped it.
+ */
+function FallbackLights({ bounds }: { bounds: Sphere }) {
+  const light = useRef<DirectionalLight>(null)
+
+  useEffect(() => {
+    if (light.current !== null)
+      castShadows(light.current, bounds, light.current.parent ?? light.current)
+  }, [bounds])
+
   return (
     <>
       <hemisphereLight args={['#f4f7ff', '#252d24', 1.25]} />
-      <directionalLight
-        castShadow
-        position={[5, 9, 4]}
-        intensity={2.2}
-        shadow-mapSize={[2048, 2048]}
-      />
+      <directionalLight ref={light} intensity={2.2} rotation={[-0.9, 0.6, 0]} />
     </>
   )
 }

@@ -8,7 +8,11 @@ code, and you have Blender itself to build it and to look at what you built.
 
   \`\`\`python
   bpy.ops.export_scene.gltf(
-      filepath="scene.glb", export_apply=True, export_extras=True
+      filepath="scene.glb",
+      export_apply=True,
+      export_extras=True,
+      export_lights=True,
+      export_import_convert_lighting_mode="COMPAT",
   )
   \`\`\`
 
@@ -23,6 +27,39 @@ Every export is self-describing. Before exporting, add exactly one Empty named
 \`__studio_scene_settings__\`, set its \`studio_contract_version\` custom property to \`1\`, and set
 \`studio_scene_kind\` to \`"environment"\` for a space a person can walk through or \`"asset"\` for one
 object presented on its own. \`export_extras=True\` is what carries those properties into the GLB.
+
+## Light
+
+\`scene.py\` lights the scene. \`export_lights=True\` carries sun, point, and spot lamps into the GLB,
+and the viewer uses exactly what you export. Light no scene and the viewer falls back to a flat
+neutral pair that makes every hour of every day look identical, so author the light deliberately.
+
+Time of day is a sun's angle, colour, and energy. A \`SUN\` lamp's \`rotation_euler\` aims it and its
+position is ignored; rotate it far from vertical for a long low light and near vertical for midday.
+
+\`\`\`python
+sun_data = bpy.data.lights.new("Sun", "SUN")
+sun_data.energy = 3.0
+sun_data.color = (1.0, 0.72, 0.42)
+sun = bpy.data.objects.new("Sun", sun_data)
+sun.rotation_euler = (1.28, 0.0, 2.4)
+bpy.context.scene.collection.objects.link(sun)
+\`\`\`
+
+- **Golden hour**: warm orange, roughly \`(1.0, 0.72, 0.42)\`, sun low, energy around 3.
+- **Midday**: near white, sun high, energy 5 or more.
+- **Overcast**: neutral grey-blue, sun high and weak, energy around 1.
+- **Moonlight**: cool blue, roughly \`(0.5, 0.62, 1.0)\`, sun low, energy well under 1.
+
+Point and spot lamps are how interiors read at night. Place them where a real fixture would be, warm
+and dim for a lamp, and give the fixture geometry an emissive material so the source is visible.
+
+Two limits matter while you compose. There is no sky and no environment reflection yet: the
+background stays dark, and a surface facing away from every lamp goes to near black rather than
+picking up bounced light. So place a weak fill where a room would have had bounce, and do not expect
+a metal surface to mirror anything. And your own previews are lit by a fixed neutral studio light,
+not by the scene: \`inspect_scene\` shows you form, placement, and material colour, never mood. Choose
+light from the scene's stated time and place, not from what the render looks like.
 
 ## Assets
 

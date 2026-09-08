@@ -90,13 +90,16 @@ spawn["studio_fall_reset_m"] = 12.0
 bpy.context.scene.collection.objects.link(spawn)
 
 sun_data = bpy.data.lights.new("Sun", "SUN")
-sun_data.energy = 2.0
+sun_data.energy = 3.0
+sun_data.color = (1.0, 0.72, 0.42)
 sun = bpy.data.objects.new("Sun", sun_data)
-sun.rotation_euler = (0.55, -0.35, -0.45)
+sun.rotation_euler = (1.28, 0.0, 2.4)
 bpy.context.scene.collection.objects.link(sun)
 
 bpy.ops.export_scene.gltf(
     filepath=str(ROOT / "public" / "scene.glb"),
     export_apply=True,
     export_extras=True,
+    export_lights=True,
+    export_import_convert_lighting_mode="COMPAT",
 )
