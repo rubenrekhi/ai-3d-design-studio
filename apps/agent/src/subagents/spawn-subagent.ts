@@ -6,8 +6,8 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
 import { Gate } from './gate'
-import { lastAssistant, textOf } from './messages'
-import { ASSET_NAME, ASSETS_DIR } from './render'
+import { lastAssistant, textOf } from '../conversation/messages'
+import { ASSET_NAME, ASSETS_DIR } from '../blender/render'
 import { type Role, subagentOpener } from './roles'
 
 /** Blender is a process per render, so this is bounded by cores, not by pi. */

@@ -180,8 +180,26 @@ outside it. The naming convention intentionally preserves a clean Godot path lat
 The runtime is [pi](https://github.com/earendil-works/pi), package
 `@earendil-works/pi-coding-agent`. We use its SDK. We do not start its CLI as a subprocess.
 
-`apps/agent` supplies a system prompt, three tools, and one extension. It does not implement an
+`apps/agent` supplies a system prompt, its tools, and one extension. It does not implement an
 agent loop.
+
+Its `src/` is grouped by what a directory is responsible for, not by file kind. Tests sit beside
+the code they cover, so the root holds no test file:
+
+```text
+apps/agent/src/
+├── agent.ts        createStudioAgent — the one function a host calls
+├── cli.ts          the entry point: interactive terminal, or one run and exit
+├── prompt.ts       the scene-builder, asset-builder, and critic prompts
+├── blender/        code that runs Blender and reads what it produced
+├── tools/          the four tools the model may call on the scene
+├── subagents/      spawn_subagent, the roles it opens, and its concurrency gate
+├── conversation/   what the harness does to the conversation document
+├── extension/      the one extension: build guard, hashing, stubs, onCommit
+├── protocol/       one run, harness events on stdout
+├── terminal/       the human-only interactive host: prompts and /render
+└── test/           helpers shared by the suites
+```
 
 ### 5.1 What pi gives us
 

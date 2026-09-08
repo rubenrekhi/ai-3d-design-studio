@@ -5,7 +5,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { dirname, extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AddressInfo } from 'node:net'
-import { SCENE_GLB } from './render'
+import { SCENE_GLB } from '../blender/render'
 
 const LOOPBACK = '127.0.0.1'
 

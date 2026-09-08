@@ -1,12 +1,12 @@
 import { defineTool } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
-import { validateScenePhysics } from '../physics'
+import { validateScenePhysics } from '../blender/physics'
 import {
   describeView,
   renderPhysicsScene,
   SCENE_GLB,
   WHOLE_SCENE,
-} from '../render'
+} from '../blender/render'
 
 export const inspectPhysicsTool = defineTool({
   name: 'inspect_physics',

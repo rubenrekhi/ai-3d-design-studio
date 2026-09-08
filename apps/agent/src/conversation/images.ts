@@ -4,8 +4,17 @@ import type {
 } from '@earendil-works/pi-coding-agent'
 import type { Conversation } from '@repo/shared'
 import type { AgentMessage } from './messages'
-import { describeShot, describeView, type Shot, type View } from './render'
-import { inspectPhysicsTool, inspectSceneTool, previewAssetTool } from './tools'
+import {
+  describeShot,
+  describeView,
+  type Shot,
+  type View,
+} from '../blender/render'
+import {
+  inspectPhysicsTool,
+  inspectSceneTool,
+  previewAssetTool,
+} from '../tools'
 
 type ToolResultMessage = Extract<AgentMessage, { role: 'toolResult' }>
 

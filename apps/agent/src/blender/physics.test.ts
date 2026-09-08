@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { buildScene } from './build'
 import { renderPhysicsScene } from './render'
-import { GOOD_SCENE, hasBlender } from './test/fixture'
+import { GOOD_SCENE, hasBlender } from '../test/fixture'
 
 const workdirs: string[] = []
 

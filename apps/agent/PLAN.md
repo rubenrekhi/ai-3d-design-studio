@@ -16,14 +16,14 @@ P2 Blender ─────┘                                  └──→ P8 i
 P3 hashing ────────────────────────────────────────────→ P7
 ```
 
-| Wave | Phases     | Parallel                           |
-| ---- | ---------- | ---------------------------------- |
-| 1    | P1, P2, P3 | All three. No shared files.        |
-| 2    | P4         | —                                  |
-| 3    | P5, P6     | Yes. P6 needs only P2.             |
-| 4    | P7, P8     | Yes, but both edit `extension.ts`. |
-| 5    | P9         | —                                  |
-| 6    | P10        | — Optional. Nothing depends on it. |
+| Wave | Phases     | Parallel                                  |
+| ---- | ---------- | ----------------------------------------- |
+| 1    | P1, P2, P3 | All three. No shared files.               |
+| 2    | P4         | —                                         |
+| 3    | P5, P6     | Yes. P6 needs only P2.                    |
+| 4    | P7, P8     | Yes, but both edit `extension/studio.ts`. |
+| 5    | P9         | —                                         |
+| 6    | P10        | — Optional. Nothing depends on it.        |
 
 Wave 1 is the one worth splitting across parallel workspaces. P1 touches pi and no Blender, P2
 touches Blender and no pi, P3 touches neither.
@@ -64,7 +64,7 @@ half a day.
 
 ### P2 — Blender bridge · ~1 day
 
-- [x] `src/blender.ts`, with no pi import anywhere in it
+- [x] `src/blender/run.ts`, with no pi import anywhere in it
 - [x] `runBlender(workdir, opts) → { ok, stdout, stderr, durationMs }`
 - [x] Resolve the binary from `BLENDER_PATH`, falling back to the macOS app bundle path
 - [x] Invoke `blender --background --python-exit-code 1 --python scene.py`
@@ -96,7 +96,7 @@ legible. Both assumptions are cheap to test now and expensive to discover later.
 
 ### P3 — workspace hashing · ~half day
 
-- [ ] `src/manifest.ts` — `hashTree(workdir)`, `diff(a, b)`
+- [ ] `src/extension/manifest.ts` — `hashTree(workdir)`, `diff(a, b)`
 - [ ] The exclusion list: `.pi/`, render output
 - [ ] Add vitest — this is the first code worth unit-testing
 
@@ -176,7 +176,7 @@ connecting to the product.
 
 ### P5 — extension scaffold and build guard · ~half day
 
-- [x] `src/extension.ts` exporting `studioExtension({ onCommit, onBuild, services })`
+- [x] `src/extension/studio.ts` exporting `studioExtension({ onCommit, onBuild, services })`
 - [x] `agent_end` → run Blender → on failure, inject the error and let the loop continue
 
 ```ts
