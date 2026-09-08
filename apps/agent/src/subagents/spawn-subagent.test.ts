@@ -2,15 +2,15 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Context } from '@earendil-works/pi-ai'
 import { afterEach, describe, expect, it } from 'vitest'
-import { imageCount, userText } from './test/context'
+import { imageCount, userText } from '../test/context'
 import {
   assetModule,
   type Fixture,
   fixture,
   GOOD_SCENE,
   hasBlender,
-} from './test/fixture'
-import type { Turn } from './test/scripted'
+} from '../test/fixture'
+import type { Turn } from '../test/scripted'
 
 let f: Fixture | undefined
 

@@ -8,9 +8,9 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
 import { createStudioAgent } from './agent'
-import { select, text } from './ask'
-import { createLocalPreview } from './local-preview'
-import { runProtocol } from './protocol'
+import { select, text } from './terminal/ask'
+import { createLocalPreview } from './terminal/preview'
+import { runProtocol } from './protocol/run'
 
 const USAGE =
   'usage: studio-agent [--workdir <path> | --project <name> [--home <path>]] [--session <id>] [--prompt <text>]'

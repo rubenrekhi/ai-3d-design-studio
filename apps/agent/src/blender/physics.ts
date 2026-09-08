@@ -15,7 +15,7 @@ import {
   type PlayerControllerConfig,
   type SceneKind,
 } from '@repo/scene-contract'
-import { lastLines, runBlender } from './blender'
+import { lastLines, runBlender } from './run'
 import { SCENE_GLB } from './render'
 
 const RENDER_DIR = '.renders'

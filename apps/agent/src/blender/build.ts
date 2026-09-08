@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { lastLines, runBlender } from './blender'
+import { lastLines, runBlender } from './run'
 import { type PhysicsReport, validateScenePhysics } from './physics'
 import { SCENE_GLB } from './render'
 

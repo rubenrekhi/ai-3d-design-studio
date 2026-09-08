@@ -8,7 +8,7 @@ import {
   PLAYER_SPAWN_NAME,
   SOURCE_NAME_EXTRA,
 } from '@repo/scene-contract'
-import { lastLines, runBlender } from './blender'
+import { lastLines, runBlender } from './run'
 
 export const SCENE_GLB = 'scene.glb'
 export const WHOLE_SCENE = 'scene'
