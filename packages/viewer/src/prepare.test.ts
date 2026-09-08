@@ -57,12 +57,14 @@ function environment(withSpawn = true): Group {
 describe('prepareScene', () => {
   it('extracts declared colliders, hides proxies, and reads the spawn', () => {
     const prepared = prepareScene(environment())
-    expect(prepared.info).toEqual({
+    expect(prepared.info).toMatchObject({
       kind: 'environment',
       contractVersion: SCENE_CONTRACT_VERSION,
       colliderCount: 2,
       hasSpawn: true,
     })
+    // The toolbar seeds its sliders from what the scene authored.
+    expect(prepared.info.controller?.jumpSpeed).toBe(6)
     expect(prepared.colliders.map((collider) => collider.kind)).toEqual([
       'visibleTrimesh',
       'hiddenConvex',

@@ -34,13 +34,24 @@ import {
   type ColliderDescription,
 } from './prepare'
 import type {
+  PlayerTuning,
   SceneViewerInfo,
   SceneViewerProps,
   SpawnDescription,
   ViewerMode,
 } from './types'
 
-const PLAYER_FLOAT_HEIGHT = 0.15
+const PLAYER_FLOAT_HEIGHT = 0.2
+/**
+ * Ecctrl's spring, damping and acceleration defaults are tuned around a capsule
+ * this size — 1.2 m tall. A human-scale one is over twice the volume, so at the
+ * default density it hangs off the same spring at half the stiffness and the
+ * ride sags and wallows. Matching its mass instead of retuning every constant
+ * keeps the rest of Ecctrl's defaults meaningful.
+ */
+const ECCTRL_TUNED_CAPSULE = { halfHeight: 0.3, radius: 0.3 }
+/** Ecctrl decelerates over this many seconds; near-zero is a hard stop. */
+const STOP_SECONDS = 0.01
 type MovementKey =
   'forward' | 'backward' | 'leftward' | 'rightward' | 'jump' | 'run'
 const KEYBOARD_MAP: { name: MovementKey; keys: string[] }[] = [
@@ -89,10 +100,12 @@ export function SceneViewer({
   const [debug, setDebug] = useState(false)
   const [resetToken, setResetToken] = useState(0)
   const [pointerLocked, setPointerLocked] = useState(false)
+  const [tuning, setTuning] = useState<PlayerTuning>()
 
   useEffect(() => {
     setInfo(undefined)
     setPointerLocked(false)
+    setTuning(undefined)
   }, [src])
 
   useEffect(() => {
@@ -112,6 +125,10 @@ export function SceneViewer({
   const loaded = useCallback(
     (next: SceneViewerInfo) => {
       setInfo(next)
+      if (next.controller !== undefined) {
+        const { walkSpeed, runSpeed, jumpSpeed } = next.controller
+        setTuning({ walkSpeed, runSpeed, jumpSpeed })
+      }
       onLoad?.(next)
     },
     [onLoad],
@@ -148,6 +165,7 @@ export function SceneViewer({
               mode={mode}
               debug={debug}
               resetToken={resetToken}
+              tuning={tuning}
               onLoaded={loaded}
               onPointerLockChange={setPointerLocked}
             />
@@ -190,6 +208,38 @@ export function SceneViewer({
         ) : null}
       </div>
 
+      {mode === 'walk' && tuning !== undefined ? (
+        <div style={panelStyle}>
+          <Slider
+            label="Walk"
+            value={tuning.walkSpeed}
+            min={1}
+            max={20}
+            onChange={(walkSpeed) =>
+              setTuning({
+                ...tuning,
+                walkSpeed,
+                runSpeed: Math.max(tuning.runSpeed, walkSpeed),
+              })
+            }
+          />
+          <Slider
+            label="Run"
+            value={tuning.runSpeed}
+            min={tuning.walkSpeed}
+            max={30}
+            onChange={(runSpeed) => setTuning({ ...tuning, runSpeed })}
+          />
+          <Slider
+            label="Jump"
+            value={tuning.jumpSpeed}
+            min={0}
+            max={20}
+            onChange={(jumpSpeed) => setTuning({ ...tuning, jumpSpeed })}
+          />
+        </div>
+      ) : null}
+
       <div style={helpStyle}>
         {mode === 'walk'
           ? pointerLocked
@@ -206,6 +256,7 @@ function LoadedScene({
   mode,
   debug,
   resetToken,
+  tuning,
   onLoaded,
   onPointerLockChange,
 }: {
@@ -213,6 +264,7 @@ function LoadedScene({
   mode: ViewerMode
   debug: boolean
   resetToken: number
+  tuning: PlayerTuning | undefined
   onLoaded: (info: SceneViewerInfo) => void
   onPointerLockChange: (locked: boolean) => void
 }) {
@@ -241,12 +293,13 @@ function LoadedScene({
           gravity={[0, -(prepared.spawn?.controller.gravity ?? 9.81), 0]}
         >
           <SceneColliders colliders={prepared.colliders} />
-          {prepared.spawn ? (
+          {prepared.spawn && tuning !== undefined ? (
             <Player
               active={mode === 'walk'}
               debug={debug}
               resetToken={resetToken}
               spawn={prepared.spawn}
+              tuning={tuning}
               onPointerLockChange={onPointerLockChange}
             />
           ) : null}
@@ -283,12 +336,14 @@ function Player({
   debug,
   resetToken,
   spawn,
+  tuning,
   onPointerLockChange,
 }: {
   active: boolean
   debug: boolean
   resetToken: number
   spawn: SpawnDescription
+  tuning: PlayerTuning
   onPointerLockChange: (locked: boolean) => void
 }) {
   const controller = useRef<EcctrlHandle>(null)
@@ -296,6 +351,11 @@ function Player({
   const config = spawn.controller
   const capsuleHalfHeight = (config.height - config.radius * 2) / 2
   const position = playerBodyPosition(spawn)
+  const density =
+    capsuleVolume(
+      ECCTRL_TUNED_CAPSULE.halfHeight,
+      ECCTRL_TUNED_CAPSULE.radius,
+    ) / capsuleVolume(capsuleHalfHeight, config.radius)
 
   useEffect(() => {
     onPointerLockChange(locked)
@@ -314,9 +374,11 @@ function Player({
         enable={active}
         capsuleHalfHeight={capsuleHalfHeight}
         capsuleRadius={config.radius}
-        maxWalkVel={config.walkSpeed}
-        maxRunVel={config.runSpeed}
-        jumpVel={config.jumpSpeed}
+        density={density}
+        maxWalkVel={tuning.walkSpeed}
+        maxRunVel={tuning.runSpeed}
+        jumpVel={tuning.jumpSpeed}
+        decDeltaTime={STOP_SECONDS}
         slopeMaxAngle={(config.maxSlopeDegrees * Math.PI) / 180}
         floatHeight={PLAYER_FLOAT_HEIGHT}
         enableToggleRun={false}
@@ -513,6 +575,12 @@ function FallbackLights({ bounds }: { bounds: Sphere }) {
   )
 }
 
+function capsuleVolume(halfHeight: number, radius: number): number {
+  return (
+    Math.PI * radius ** 2 * halfHeight * 2 + (4 / 3) * Math.PI * radius ** 3
+  )
+}
+
 function playerBodyPosition(spawn: SpawnDescription): [number, number, number] {
   return [
     spawn.position[0],
@@ -586,6 +654,59 @@ const toolbarStyle: React.CSSProperties = {
   borderRadius: 10,
   background: 'rgba(12,14,18,0.86)',
   backdropFilter: 'blur(12px)',
+}
+
+function Slider({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <label style={sliderStyle}>
+      <span style={{ width: 34 }}>{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={0.5}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        style={{ width: 96, accentColor: '#f4f4f5' }}
+      />
+      <span style={{ width: 42, textAlign: 'right' }}>{value.toFixed(1)}</span>
+    </label>
+  )
+}
+
+const panelStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 66,
+  left: 16,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  padding: '10px 12px',
+  border: '1px solid rgba(255,255,255,0.14)',
+  borderRadius: 10,
+  background: 'rgba(12,14,18,0.86)',
+  backdropFilter: 'blur(12px)',
+  color: '#d4d4d8',
+  font: '11px/1 system-ui, sans-serif',
+}
+
+const sliderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  cursor: 'pointer',
 }
 
 const helpStyle: React.CSSProperties = {
