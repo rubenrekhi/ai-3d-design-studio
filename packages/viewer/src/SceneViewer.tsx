@@ -25,13 +25,15 @@ import {
   TrimeshCollider,
 } from '@react-three/rapier'
 import { Ecctrl, type EcctrlHandle } from 'ecctrl'
-import { DirectionalLight, Quaternion, Sphere, Vector3 } from 'three'
-import { WebGPURenderer } from 'three/webgpu'
+import { DirectionalLight, Quaternion, Scene, Sphere, Vector3 } from 'three'
+import { SkyMesh } from 'three/addons/objects/SkyMesh.js'
+import { PMREMGenerator, WebGPURenderer, type Renderer } from 'three/webgpu'
 import {
   castShadows,
   disposePreparedScene,
   prepareScene,
   type ColliderDescription,
+  type SkyDescription,
 } from './prepare'
 import type {
   PlayerTuning,
@@ -41,6 +43,8 @@ import type {
   ViewerMode,
 } from './types'
 
+/** Wide enough to enclose any scene the harness builds, inside the camera's far plane. */
+const SKY_SIZE = 2000
 const PLAYER_FLOAT_HEIGHT = 0.2
 /**
  * Ecctrl's spring, damping and acceleration defaults are tuned around a capsule
@@ -168,7 +172,7 @@ export function SceneViewer({
         <Canvas
           shadows
           dpr={[1, 2]}
-          camera={{ position: [5, 3.5, 7], fov: 50, near: 0.05 }}
+          camera={{ position: [5, 3.5, 7], fov: 50, near: 0.05, far: 4000 }}
           gl={createRenderer}
         >
           <color attach="background" args={['#0b0d10']} />
@@ -294,6 +298,9 @@ function LoadedScene({
 
   return (
     <>
+      {prepared.sky !== undefined ? (
+        <Sky sky={prepared.sky} center={prepared.bounds.center} />
+      ) : null}
       {!prepared.hasLights ? <FallbackLights bounds={prepared.bounds} /> : null}
       <OrbitControls makeDefault enabled={mode === 'orbit'} />
       <Bounds fit={mode === 'orbit'} margin={1.25}>
@@ -568,6 +575,67 @@ function SpawnDebug({ spawn }: { spawn: SpawnDescription }) {
       </mesh>
     </group>
   )
+}
+
+/**
+ * The sky is drawn from the scene's own sun rather than authored as geometry:
+ * glTF has nowhere to carry one, but a daylight model needs little more than
+ * the direction light arrives from, which the export already states. The same
+ * sky becomes the environment map, which is what stops a face turned away from
+ * every lamp going to black and gives a polished surface something to mirror.
+ */
+function Sky({ sky, center }: { sky: SkyDescription; center: Vector3 }) {
+  const { gl, scene } = useThree()
+
+  const mesh = useMemo(() => {
+    const value = new SkyMesh()
+    value.scale.setScalar(SKY_SIZE)
+    return value
+  }, [])
+
+  useEffect(() => {
+    mesh.position.copy(center)
+    mesh.turbidity.value = sky.turbidity
+    mesh.cloudCoverage.value = sky.cloudCoverage
+    mesh.sunPosition.value.copy(sky.sunDirection)
+    mesh.showSunDisc.value = true
+  }, [mesh, sky, center])
+
+  useEffect(() => {
+    // R3F still types the renderer as WebGL; this one negotiated a backend in
+    // the factory above.
+    const generator = new PMREMGenerator(gl as unknown as Renderer)
+    const staging = new Scene()
+    const source = new SkyMesh()
+    source.scale.setScalar(SKY_SIZE)
+    source.turbidity.value = sky.turbidity
+    source.cloudCoverage.value = sky.cloudCoverage
+    source.sunPosition.value.copy(sky.sunDirection)
+    // Prefiltering turns the disc into a ringing hotspot, and the sun is
+    // already in the scene as a light.
+    source.showSunDisc.value = false
+    staging.add(source)
+
+    const target = generator.fromScene(staging)
+    scene.environment = target.texture
+    generator.dispose()
+    source.geometry.dispose()
+    source.material.dispose()
+
+    return () => {
+      scene.environment = null
+      target.dispose()
+    }
+  }, [gl, scene, sky])
+
+  useEffect(() => {
+    return () => {
+      mesh.geometry.dispose()
+      mesh.material.dispose()
+    }
+  }, [mesh])
+
+  return <primitive object={mesh} />
 }
 
 /**

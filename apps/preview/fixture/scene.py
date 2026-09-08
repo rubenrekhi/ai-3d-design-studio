@@ -73,6 +73,8 @@ bpy.ops.object.shade_smooth()
 settings = bpy.data.objects.new("__studio_scene_settings__", None)
 settings["studio_contract_version"] = 1
 settings["studio_scene_kind"] = "environment"
+settings["studio_sky_turbidity"] = 4.0
+settings["studio_sky_cloud_coverage"] = 0.35
 bpy.context.scene.collection.objects.link(settings)
 
 spawn = bpy.data.objects.new("__studio_player_spawn__", None)

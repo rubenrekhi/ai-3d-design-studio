@@ -5,11 +5,13 @@ import {
   readContractVersion,
   readPlayerController,
   readSceneKind,
+  readSky,
   SCENE_CONTRACT_VERSION,
   SCENE_SETTINGS_NAME,
   sourceName,
   type CollisionKind,
   type SceneKind,
+  type SkyConfig,
 } from '@repo/scene-contract'
 import {
   Box3,
@@ -35,6 +37,11 @@ export interface ColliderDescription {
   indices: Uint32Array
 }
 
+export interface SkyDescription extends SkyConfig {
+  /** Unit vector from the scene toward the sun, taken from its own light. */
+  sunDirection: Vector3
+}
+
 export interface PreparedScene {
   visual: Object3D
   colliders: ColliderDescription[]
@@ -42,6 +49,7 @@ export interface PreparedScene {
   kind?: SceneKind
   contractVersion?: number
   hasLights: boolean
+  sky?: SkyDescription
   bounds: Sphere
   info: SceneViewerInfo
 }
@@ -77,6 +85,7 @@ export function prepareScene(source: Object3D): PreparedScene {
   })
 
   const bounds = boundsOf(visual)
+  const sunDirection = brightestSunDirection(lights)
   for (const light of lights) castShadows(light, bounds, visual)
   visual.updateMatrixWorld(true)
 
@@ -122,6 +131,17 @@ export function prepareScene(source: Object3D): PreparedScene {
     }
   }
 
+  const skySettings = readSky(settingsNode?.userData ?? {}, kind)
+  if (skySettings.errors.length > 0) {
+    throw new Error(skySettings.errors.join('; '))
+  }
+  // Without a sun there is no time of day to draw, so the scene keeps the
+  // viewer's flat background rather than a sky invented for it.
+  const sky =
+    skySettings.kind === 'daylight' && sunDirection !== undefined
+      ? { ...skySettings.config, sunDirection }
+      : undefined
+
   return {
     visual,
     colliders,
@@ -129,6 +149,7 @@ export function prepareScene(source: Object3D): PreparedScene {
     kind,
     contractVersion,
     hasLights: lights.length > 0,
+    sky,
     bounds,
     info: {
       kind,
@@ -138,6 +159,18 @@ export function prepareScene(source: Object3D): PreparedScene {
       controller: spawn?.controller,
     },
   }
+}
+
+function brightestSunDirection(lights: Light[]): Vector3 | undefined {
+  let sun: DirectionalLight | undefined
+  for (const light of lights) {
+    if (!(light instanceof DirectionalLight)) continue
+    if (sun === undefined || light.intensity > sun.intensity) sun = light
+  }
+  if (sun === undefined) return undefined
+  return new Vector3(0, 0, 1)
+    .applyQuaternion(sun.getWorldQuaternion(new Quaternion()))
+    .normalize()
 }
 
 export function boundsOf(root: Object3D): Sphere {

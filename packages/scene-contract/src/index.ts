@@ -3,6 +3,7 @@ export const SCENE_SETTINGS_NAME = '__studio_scene_settings__'
 export const PLAYER_SPAWN_NAME = '__studio_player_spawn__'
 
 export const SCENE_KIND_EXTRA = 'studio_scene_kind'
+export const SKY_EXTRA = 'studio_sky'
 export const CONTRACT_VERSION_EXTRA = 'studio_contract_version'
 export const SOURCE_NAME_EXTRA = 'studio_source_name'
 
@@ -156,4 +157,74 @@ export function readContractVersion(
   return typeof value === 'number' && Number.isInteger(value)
     ? value
     : undefined
+}
+
+export type SkyKind = 'daylight' | 'none'
+
+export const SKY_EXTRA_KEYS = {
+  turbidity: 'studio_sky_turbidity',
+  cloudCoverage: 'studio_sky_cloud_coverage',
+} as const
+
+export interface SkyConfig {
+  turbidity: number
+  cloudCoverage: number
+}
+
+export const DEFAULT_SKY: Readonly<SkyConfig> = {
+  turbidity: 3,
+  cloudCoverage: 0.3,
+}
+
+export const SKY_LIMITS: {
+  [Key in keyof SkyConfig]: readonly [number, number]
+} = {
+  turbidity: [1, 20],
+  cloudCoverage: [0, 1],
+}
+
+export interface SkyReadResult {
+  kind: SkyKind
+  config: SkyConfig
+  errors: string[]
+}
+
+/**
+ * A walkable scene gets a sky unless it asks not to; an asset is one object on
+ * a neutral field and would only be lit oddly by one.
+ */
+export function readSky(
+  extras: Readonly<Record<string, unknown>>,
+  sceneKind: SceneKind | undefined,
+): SkyReadResult {
+  const config = { ...DEFAULT_SKY }
+  const errors: string[] = []
+  const declared = extras[SKY_EXTRA]
+  let kind: SkyKind = sceneKind === 'environment' ? 'daylight' : 'none'
+
+  if (declared !== undefined) {
+    if (declared === 'daylight' || declared === 'none') {
+      kind = declared
+    } else {
+      errors.push(`${SKY_EXTRA} must be 'daylight' or 'none'`)
+    }
+  }
+
+  for (const key of Object.keys(SKY_EXTRA_KEYS) as (keyof SkyConfig)[]) {
+    const extra = SKY_EXTRA_KEYS[key]
+    const value = extras[extra]
+    if (value === undefined) continue
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      errors.push(`${extra} must be a finite number`)
+      continue
+    }
+    const [minimum, maximum] = SKY_LIMITS[key]
+    if (value < minimum || value > maximum) {
+      errors.push(`${extra} must be between ${minimum} and ${maximum}`)
+      continue
+    }
+    config[key] = value
+  }
+
+  return { kind, config, errors }
 }
