@@ -50,8 +50,21 @@ const PLAYER_FLOAT_HEIGHT = 0.2
  * keeps the rest of Ecctrl's defaults meaningful.
  */
 const ECCTRL_TUNED_CAPSULE = { halfHeight: 0.3, radius: 0.3 }
-/** Ecctrl decelerates over this many seconds; near-zero is a hard stop. */
-const STOP_SECONDS = 0.01
+/**
+ * Ecctrl's two `DeltaTime` props are not times. Each is clamped to 0..1 and
+ * scales an impulse of `mass * coefficient * value`, so 1 cancels or supplies a
+ * whole frame's velocity and 0 does nothing. Braking runs only on the frames
+ * with no move input, so a full 1 stops the player where the key was released
+ * without ever fighting the key that is held.
+ */
+const BRAKE = 1
+const ACCELERATE = 0.6
+/**
+ * Both impulses are also scaled by `clamp((groundFriction + slideGripFactor) / 2, 0, 1)`.
+ * Saturating that clamp keeps stopping and starting identical on every surface
+ * rather than varying with whatever friction a collider happens to carry.
+ */
+const GRIP = 2
 type MovementKey =
   'forward' | 'backward' | 'leftward' | 'rightward' | 'jump' | 'run'
 const KEYBOARD_MAP: { name: MovementKey; keys: string[] }[] = [
@@ -378,7 +391,9 @@ function Player({
         maxWalkVel={tuning.walkSpeed}
         maxRunVel={tuning.runSpeed}
         jumpVel={tuning.jumpSpeed}
-        decDeltaTime={STOP_SECONDS}
+        accDeltaTime={ACCELERATE}
+        decDeltaTime={BRAKE}
+        slideGripFactor={GRIP}
         slopeMaxAngle={(config.maxSlopeDegrees * Math.PI) / 180}
         floatHeight={PLAYER_FLOAT_HEIGHT}
         enableToggleRun={false}

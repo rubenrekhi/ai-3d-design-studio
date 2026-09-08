@@ -63,12 +63,17 @@ export interface PlayerControllerConfig {
   fallResetDistance: number
 }
 
+/**
+ * Speeds read slower through a 50° first-person camera than they do on foot,
+ * because the peripheral vision that sells motion is missing. These are what a
+ * brisk walk and a run feel like on screen, not what they measure in life.
+ */
 export const DEFAULT_PLAYER_CONTROLLER: Readonly<PlayerControllerConfig> = {
   height: 1.8,
   radius: 0.35,
   eyeHeight: 1.65,
-  walkSpeed: 3,
-  runSpeed: 6,
+  walkSpeed: 4.5,
+  runSpeed: 8,
   jumpSpeed: 5,
   gravity: 9.81,
   maxSlopeDegrees: 50,
