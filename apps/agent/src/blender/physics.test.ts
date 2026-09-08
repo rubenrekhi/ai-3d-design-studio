@@ -42,7 +42,11 @@ bpy.context.scene.collection.objects.link(spawn)
 ${extra}
 
 bpy.ops.export_scene.gltf(
-    filepath="scene.glb", export_apply=True, export_extras=True
+    filepath="scene.glb",
+    export_apply=True,
+    export_extras=True,
+    export_lights=True,
+    export_import_convert_lighting_mode="COMPAT",
 )
 `
 }

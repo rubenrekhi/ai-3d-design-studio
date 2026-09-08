@@ -1,5 +1,14 @@
 import { readFile } from 'node:fs/promises'
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Object3D } from 'three'
+import {
+  AmbientLight,
+  BoxGeometry,
+  DirectionalLight,
+  Group,
+  Mesh,
+  MeshStandardMaterial,
+  Object3D,
+  Vector3,
+} from 'three'
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js'
 import { describe, expect, it } from 'vitest'
 import {
@@ -103,6 +112,53 @@ describe('prepareScene', () => {
     disposePreparedScene(prepared)
   })
 
+  it('makes every mesh take part in shadows', () => {
+    const prepared = prepareScene(environment())
+    const floor = prepared.visual.getObjectByName('Floor-col')
+    if (!(floor instanceof Mesh)) throw new Error('missing floor')
+    expect(floor.castShadow).toBe(true)
+    expect(floor.receiveShadow).toBe(true)
+    disposePreparedScene(prepared)
+  })
+
+  it('aims a sun at the scene from outside it', () => {
+    const scene = environment()
+    const source = new DirectionalLight()
+    source.name = 'Sun'
+    source.rotation.set(-Math.PI / 3, 0, 0)
+    scene.add(source)
+
+    const prepared = prepareScene(scene)
+    expect(prepared.hasLights).toBe(true)
+    // prepareScene works on a clone, so the caller's own GLTF scene is untouched.
+    expect(source.castShadow).toBe(false)
+
+    const sun = prepared.visual.getObjectByName('Sun')
+    if (!(sun instanceof DirectionalLight)) throw new Error('missing sun')
+    expect(sun.castShadow).toBe(true)
+
+    const distance = sun
+      .getWorldPosition(new Vector3())
+      .distanceTo(prepared.bounds.center)
+    expect(distance).toBeGreaterThan(prepared.bounds.radius)
+    expect(sun.target.position).toEqual(prepared.bounds.center)
+    expect(sun.shadow.camera.right).toBeCloseTo(prepared.bounds.radius)
+    expect(sun.shadow.camera.far).toBeGreaterThan(distance)
+    disposePreparedScene(prepared)
+  })
+
+  it('leaves a light with nothing to cast from alone', () => {
+    const scene = environment()
+    const ambient = new AmbientLight()
+    ambient.name = 'Ambient'
+    scene.add(ambient)
+
+    const prepared = prepareScene(scene)
+    expect(prepared.hasLights).toBe(true)
+    expect(prepared.visual.getObjectByName('Ambient')?.castShadow).toBe(false)
+    disposePreparedScene(prepared)
+  })
+
   it('reads the Blender-exported fixture contract', async () => {
     const file = await readFile(
       new URL('../../../apps/preview/public/scene.glb', import.meta.url),
@@ -116,6 +172,7 @@ describe('prepareScene', () => {
     })
     const prepared = prepareScene(gltf.scene)
     expect(prepared.kind).toBe('environment')
+    expect(prepared.hasLights).toBe(true)
     expect(prepared.spawn?.position[1]).toBeCloseTo(0)
     expect(prepared.colliders.map((collider) => collider.name)).toEqual(
       expect.arrayContaining([

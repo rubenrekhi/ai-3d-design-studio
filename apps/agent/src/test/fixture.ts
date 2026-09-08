@@ -24,7 +24,11 @@ settings["studio_contract_version"] = 1
 settings["studio_scene_kind"] = "asset"
 bpy.context.scene.collection.objects.link(settings)
 bpy.ops.export_scene.gltf(
-    filepath="scene.glb", export_apply=True, export_extras=True
+    filepath="scene.glb",
+    export_apply=True,
+    export_extras=True,
+    export_lights=True,
+    export_import_convert_lighting_mode="COMPAT",
 )
 `
 

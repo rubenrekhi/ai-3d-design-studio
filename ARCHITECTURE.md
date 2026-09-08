@@ -150,8 +150,20 @@ A final GLB carries two reserved Empties. `__studio_scene_settings__` holds
 lets the build guard reject a missing spawn instead of guessing whether the GLB was meant to be
 walkable. An environment also carries exactly one `__studio_player_spawn__`; its location is the
 player's feet, its rotation is the initial facing direction, and optional `studio_player_*` extras
-override human-scale controller defaults. `scene.py` exports with `export_apply=True` and
-`export_extras=True`.
+override human-scale controller defaults. `scene.py` exports with `export_apply=True`,
+`export_extras=True`, `export_lights=True`, and
+`export_import_convert_lighting_mode="COMPAT"`.
+
+Light is the scene's, not the viewer's. `scene.py` places the lamps, and their colour, energy, and
+angle are how a time of day is expressed — a low warm sun for golden hour, a low dim blue one for
+moonlight. The exporter drops lights unless asked, and converts to physical units unless told
+otherwise; `COMPAT` keeps Blender's own unitless strengths, which is what the viewer can use
+directly while it has no exposure control. The viewer falls back to a flat neutral pair only when
+the GLB carries no light at all. A directional light exports with a direction and no useful
+position, so the viewer walks it back along its own aim until the whole scene is in front of it
+before fitting a shadow camera. There is still no sky or environment reflection, so a surface facing
+away from every lamp goes dark rather than picking up bounce, and a polished surface has nothing to
+mirror.
 
 Collision is explicit and suffix-driven:
 
