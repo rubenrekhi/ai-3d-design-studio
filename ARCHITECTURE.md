@@ -143,6 +143,16 @@ agent loop.
   recommends containers. In production the agent runs only inside a microVM, so this is satisfied. In
   local development the agent gets the developer's own permissions. Do not extend that model to
   anything with more than one user.
+- **Pinned at 0.83.0 while 0.85.1 is out.** The bump is worth taking and is its own change. 0.84.0
+  slims the JSON and RPC `message_update` events to deltas (the harness's mapper reads only deltas
+  and `message_end`, so it should hold), promotes pi-agent-core's v2 session API, removes its legacy
+  in-memory and JSONL repositories, and requires `renameFile` of custom file systems. 0.85.0 adds
+  restorable in-memory sessions, the primitive 11.5's step 3 wants: a product could hand the harness
+  `sessions.history` without writing a file first. Bump both pinned packages together, re-run the
+  suite and the bundle, and read the changelog for whatever landed since. Models are never a reason
+  to bump: pi fetches its catalog from pi.dev at run time and caches it in `models-store.json`, and
+  a model the catalog lacks (GPT-6 Astra on OpenRouter, as of 2026-09-06) is added through
+  `~/.pi/agent/models.json`, which merges into the built-in provider by id.
 
 ### 5.3 Boundary
 
@@ -302,11 +312,31 @@ directory would have bought nothing a prompt does not.
 The payoff is 7.1's problem from the other end: a builder's contact sheets and a critic's
 inspections never enter the parent's context. The parent pays for one line each.
 
-The prompt makes delegation the rule, not an option. Anything with parts of its own is an asset,
-every asset module is written by a builder, and a scene with assets is judged by a critic before
-it is called finished. A model left to choose built a whole dining room inline in `scene.py`
-without touching the tool; a directive prompt, tested on the same request, spawned the builders
-first.
+The prompt makes delegation the rule, not an option, and fixes its grain at one independently
+placeable object or architectural component. A room, area, storey, furniture set, and house are
+never assets; the parent recursively inventories their objects and `scene.py` composes them. Walls,
+windows, floors, furniture, light fixtures, and decor are object-level assets too. Intrinsic parts
+such as a couch's cushions stay with that object, while repeated identical objects share one module.
+
+The parent first resolves layout and shared dimensions, gives each builder one self-contained brief,
+and spawns the independent calls together. It writes only composition in `scene.py`; asset-level
+corrections go back through a builder with the same module name. Every builder is directed to produce
+high-fidelity, high-polygon geometry and to use `preview_asset` whenever another view can guide a
+meaningful improvement. The model, not a fixed call count, decides when the asset holds up from all
+four sides. A scene with assets is judged by a critic before it is called finished. A model left to
+choose built a whole dining room inline in `scene.py` without touching the tool; a directive prompt,
+tested on the same request, spawned the builders first.
+
+That quality bar currently applies to geometry and glTF-compatible PBR values, not the whole offline
+rendering pipeline. Builders have no texture-acquisition tool, and `preview_asset` renders the exported
+GLB with Workbench material colours. It cannot show Blender-only procedural shaders, displacement,
+normal-map response, or path-traced lighting. Essential relief and imperfections therefore belong in
+geometry; texture authoring and photoreal material and lighting review need a later tool.
+
+Blender's glTF exporter does not apply geometry modifiers by default. The builder prompt therefore
+requires every bevel, subdivision, Geometry Nodes, and displacement modifier to be applied before
+`build()` returns so `preview_asset` sees it. The scene prompt also exports with `export_apply=True`
+as a backstop for the final GLB.
 
 ---
 
