@@ -247,6 +247,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 0.83.0
         version: 0.83.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
+      '@repo/preview':
+        specifier: workspace:*
+        version: link:../preview
 
   apps/preview:
     dependencies:

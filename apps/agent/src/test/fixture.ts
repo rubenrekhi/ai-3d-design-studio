@@ -7,7 +7,7 @@ import type {
   AgentSessionRuntime,
 } from '@earendil-works/pi-coding-agent'
 import type { BuildReport, Commit } from '@repo/shared'
-import { createStudioAgent } from '../agent'
+import { createStudioAgent, type StudioAgentOptions } from '../agent'
 import { type Respond, useScriptedModel } from './scripted'
 
 export const hasBlender = existsSync(
@@ -54,11 +54,16 @@ export interface Fixture {
   dispose(): Promise<void>
 }
 
+type FixtureOptions = Pick<StudioAgentOptions, 'onRender' | 'onSceneBuilt'>
+
 /**
  * A studio agent on a throwaway workspace, driven by a scripted model and
  * pointed at an empty agent directory so nothing on the machine leaks in.
  */
-export async function fixture(respond: Respond): Promise<Fixture> {
+export async function fixture(
+  respond: Respond,
+  options: FixtureOptions = {},
+): Promise<Fixture> {
   const root = await mkdtemp(join(tmpdir(), 'studio-'))
   const workdir = join(root, 'workspace')
   await mkdir(workdir, { recursive: true })
@@ -74,6 +79,8 @@ export async function fixture(respond: Respond): Promise<Fixture> {
     onBuild: (build) => {
       builds.push(build)
     },
+    onRender: options.onRender,
+    onSceneBuilt: options.onSceneBuilt,
   })
   const events: AgentSessionEvent[] = []
   runtime.session.subscribe((event) => {
