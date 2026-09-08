@@ -1,8 +1,9 @@
 # Architecture
 
 > **Status: the harness is built, the product is design.** `apps/agent` implements sections 5
-> through 8 and 11.1; `apps/web` and the store do not exist yet. This document records decisions so
-> that nobody must make them twice. Update it when reality changes.
+> through 8 and 11.1; `apps/web` renders the shared viewer over scene URLs it is handed, and the
+> store does not exist yet. This document records decisions so that nobody must make them twice.
+> Update it when reality changes.
 
 A person and an agent build 3D assets and environments together. The person describes a change. The
 agent writes Python, runs Blender, and inspects the result. The person sees the new scene in a live
@@ -124,6 +125,12 @@ offers orbit and first-person modes, constructs only explicitly declared Rapier 
 an Ecctrl character with mouse look, WASD, run, jump, reset, and fall recovery. `apps/web` passes it a
 stored URL. `apps/preview` passes it the local host's current build URL. Neither shell implements its
 own renderer or controller.
+
+The web shell is told which GLBs to show rather than looking them up: `scene` names the current
+build, `version` repeats for earlier ones, and `build` changes whenever the agent rewrites the same
+URL. Until the store exists this is the query string, with `STUDIO_SCENE_URL` as the default; when
+versions land, the same shape comes from the database and only the caller changes. Only same-origin
+paths and `http(s)` URLs are honoured, because the value reaches the browser's loader.
 
 `packages/scene-contract` is the small dependency-light seam shared by the harness and viewer. It
 contains reserved names, collision suffixes, engine-neutral controller fields, defaults, and scalar
