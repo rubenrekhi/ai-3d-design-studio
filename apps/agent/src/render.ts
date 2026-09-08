@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import {
+  COLLISION_SUFFIXES,
+  DEFAULT_PLAYER_CONTROLLER,
+  PLAYER_CONTROLLER_EXTRA_KEYS,
+  PLAYER_SPAWN_NAME,
+  SOURCE_NAME_EXTRA,
+} from '@repo/scene-contract'
 import { lastLines, runBlender } from './blender'
 
 export const SCENE_GLB = 'scene.glb'
@@ -85,9 +92,35 @@ export async function renderScene(
   const render = await runViews(workdir, opts, {
     glb,
     module: null,
+    physics: false,
     width: SCENE_WIDTH,
     height: SCENE_HEIGHT,
     views: [{ label: 'view', view }],
+  })
+  const [shot] = render.shots
+  if (shot === undefined) throw new Error('Blender rendered nothing.')
+  return { png: shot.png, durationMs: render.durationMs }
+}
+
+export async function renderPhysicsScene(
+  workdir: string,
+  view: View,
+  opts: RenderOptions,
+): Promise<{ png: string; durationMs: number }> {
+  const glb = join(workdir, SCENE_GLB)
+  if (!(await exists(glb))) {
+    throw new Error(
+      `There is no ${SCENE_GLB} to inspect yet. Run run_blender first.`,
+    )
+  }
+
+  const render = await runViews(workdir, opts, {
+    glb,
+    module: null,
+    physics: true,
+    width: SCENE_WIDTH,
+    height: SCENE_HEIGHT,
+    views: [{ label: 'physics', view }],
   })
   const [shot] = render.shots
   if (shot === undefined) throw new Error('Blender rendered nothing.')
@@ -102,7 +135,7 @@ export async function renderScene(
 export async function renderAsset(
   workdir: string,
   name: string,
-  opts: RenderOptions,
+  opts: RenderOptions & { physics?: boolean },
 ): Promise<{ shots: Shot[]; durationMs: number }> {
   if (!ASSET_NAME.test(name)) {
     throw new Error(
@@ -117,6 +150,7 @@ export async function renderAsset(
   return runViews(workdir, opts, {
     glb: join(workdir, RENDER_DIR, `${scratchName(opts.id)}.glb`),
     module: name,
+    physics: opts.physics ?? false,
     width: SHEET_WIDTH,
     height: SHEET_HEIGHT,
     views: ASSET_SHEET,
@@ -126,6 +160,7 @@ export async function renderAsset(
 interface RenderSpec {
   glb: string
   module: string | null
+  physics: boolean
   width: number
   height: number
   views: { label: string; view: View }[]
@@ -156,6 +191,7 @@ async function runViews(
           workdir,
           glb: spec.glb,
           module: spec.module,
+          physics: spec.physics,
           width: spec.width,
           height: spec.height,
           views: spec.views.map((entry, i) => ({
@@ -239,12 +275,22 @@ from mathutils import Vector
 
 LENS_FOV = math.radians(40)
 MARGIN = 1.1
+COLLISION_SUFFIXES = ${JSON.stringify(Object.values(COLLISION_SUFFIXES))}
+HIDDEN_COLLISION_SUFFIXES = ${JSON.stringify([
+  COLLISION_SUFFIXES.hiddenTrimesh,
+  COLLISION_SUFFIXES.hiddenConvex,
+])}
+SPAWN_NAME = ${JSON.stringify(PLAYER_SPAWN_NAME)}
+SOURCE_NAME_KEY = ${JSON.stringify(SOURCE_NAME_EXTRA)}
+CONTROLLER_KEYS = ${JSON.stringify(PLAYER_CONTROLLER_EXTRA_KEYS)}
+CONTROLLER_DEFAULTS = ${JSON.stringify(DEFAULT_PLAYER_CONTROLLER)}
 
 with open(os.path.splitext(os.path.abspath(__file__))[0] + ".json") as handle:
     params = json.load(handle)
 
 width = params["width"]
 height = params["height"]
+physics = params["physics"]
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -265,12 +311,123 @@ if module_name:
             "arguments in an empty scene." % module_name
         )
     build()
-    bpy.ops.export_scene.gltf(filepath=params["glb"])
+    bpy.ops.export_scene.gltf(
+        filepath=params["glb"], export_apply=True, export_extras=True
+    )
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 bpy.ops.import_scene.gltf(filepath=params["glb"])
 
 scene = bpy.context.scene
+
+
+def source_name(obj):
+    return obj.get(SOURCE_NAME_KEY, obj.name)
+
+
+def collision_suffix(obj):
+    name = source_name(obj)
+    return next((suffix for suffix in COLLISION_SUFFIXES if name.endswith(suffix)), None)
+
+
+def set_colour(obj, colour):
+    obj.color = (*colour, 1.0)
+
+
+def add_cylinder_between(name, start, end, radius, colour, vertices=12):
+    delta = end - start
+    if delta.length <= 0.0001:
+        return None
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=vertices,
+        radius=radius,
+        depth=delta.length,
+        location=(start + end) / 2,
+    )
+    obj = bpy.context.object
+    obj.name = name
+    obj.rotation_euler = delta.to_track_quat("Z", "Y").to_euler()
+    set_colour(obj, colour)
+    return obj
+
+
+def add_spawn_debug(spawn):
+    origin = spawn.matrix_world.translation
+    rotation = spawn.matrix_world.to_quaternion()
+    player_height = float(spawn.get(CONTROLLER_KEYS["height"], CONTROLLER_DEFAULTS["height"]))
+    radius = float(spawn.get(CONTROLLER_KEYS["radius"], CONTROLLER_DEFAULTS["radius"]))
+    eye_height = float(spawn.get(CONTROLLER_KEYS["eyeHeight"], CONTROLLER_DEFAULTS["eyeHeight"]))
+    colour = (1.0, 0.08, 0.65)
+    wire_radius = max(radius * 0.045, 0.008)
+    for index, z in enumerate((radius, player_height / 2, player_height - radius)):
+        bpy.ops.mesh.primitive_torus_add(
+            major_segments=32,
+            minor_segments=6,
+            location=origin + Vector((0, 0, z)),
+            major_radius=radius,
+            minor_radius=wire_radius,
+        )
+        ring = bpy.context.object
+        ring.name = "__studio_debug_capsule_ring_%d" % index
+        set_colour(ring, colour)
+    low = origin.z + radius
+    high = origin.z + player_height - radius
+    for index, (x, y) in enumerate(((radius, 0), (-radius, 0), (0, radius), (0, -radius))):
+        add_cylinder_between(
+            "__studio_debug_capsule_side_%d" % index,
+            Vector((origin.x + x, origin.y + y, low)),
+            Vector((origin.x + x, origin.y + y, high)),
+            wire_radius,
+            colour,
+            8,
+        )
+    arrow_start = origin + Vector((0, 0, eye_height))
+    forward = rotation @ Vector((0, 1, 0))
+    forward.z = 0
+    if forward.length <= 0.0001:
+        forward = Vector((0, 1, 0))
+    forward.normalize()
+    arrow_end = arrow_start + forward * max(0.9, radius * 3)
+    add_cylinder_between(
+        "__studio_debug_spawn_facing",
+        arrow_start,
+        arrow_end,
+        wire_radius * 1.6,
+        (1.0, 0.72, 0.05),
+        10,
+    )
+    bpy.ops.mesh.primitive_cone_add(
+        vertices=16,
+        radius1=radius * 0.22,
+        radius2=0,
+        depth=radius * 0.5,
+        location=arrow_end + forward * radius * 0.2,
+    )
+    arrow = bpy.context.object
+    arrow.name = "__studio_debug_spawn_arrow"
+    arrow.rotation_euler = forward.to_track_quat("Z", "Y").to_euler()
+    set_colour(arrow, (1.0, 0.72, 0.05))
+
+
+if physics:
+    colours = {
+        ${JSON.stringify(COLLISION_SUFFIXES.visibleTrimesh)}: (0.12, 0.9, 0.3),
+        ${JSON.stringify(COLLISION_SUFFIXES.hiddenTrimesh)}: (0.05, 0.58, 1.0),
+        ${JSON.stringify(COLLISION_SUFFIXES.hiddenConvex)}: (1.0, 0.35, 0.05),
+    }
+    for obj in list(scene.objects):
+        if obj.type != "MESH":
+            continue
+        suffix = collision_suffix(obj)
+        set_colour(obj, colours.get(suffix, (0.32, 0.34, 0.38)))
+    spawns = [obj for obj in scene.objects if source_name(obj) == SPAWN_NAME]
+    if spawns:
+        add_spawn_debug(spawns[0])
+else:
+    for obj in scene.objects:
+        if collision_suffix(obj) in HIDDEN_COLLISION_SUFFIXES:
+            obj.hide_render = True
+
 scene.render.engine = "BLENDER_WORKBENCH"
 scene.render.resolution_x = width
 scene.render.resolution_y = height
@@ -280,7 +437,7 @@ scene.render.image_settings.color_mode = "RGB"
 
 shading = scene.display.shading
 shading.light = "STUDIO"
-shading.color_type = "MATERIAL"
+shading.color_type = "OBJECT" if physics else "MATERIAL"
 # Workbench renders its backdrop from the world and ignores the viewport colour, and an
 # empty file has no world, so without this every image comes back on pure black.
 shading.background_type = "WORLD"
@@ -300,13 +457,13 @@ vertical_fov = 2 * math.atan(math.tan(LENS_FOV / 2) * height / width)
 
 def bounds(framing):
     if framing == "${WHOLE_SCENE}":
-        targets = [obj for obj in scene.objects if obj.type == "MESH"]
+        targets = [obj for obj in scene.objects if obj.type == "MESH" and not obj.hide_render]
         if not targets:
             raise RuntimeError("there are no meshes to look at")
     else:
-        targets = [obj for obj in scene.objects if obj.name == framing]
+        targets = [obj for obj in scene.objects if source_name(obj) == framing and not obj.hide_render]
         if not targets:
-            names = ", ".join(sorted(obj.name for obj in scene.objects)) or "(none)"
+            names = ", ".join(sorted(source_name(obj) for obj in scene.objects if not obj.hide_render)) or "(none)"
             raise RuntimeError("no object named '%s'. Found: %s" % (framing, names))
     corners = [
         obj.matrix_world @ Vector(corner) for obj in targets for corner in obj.bound_box

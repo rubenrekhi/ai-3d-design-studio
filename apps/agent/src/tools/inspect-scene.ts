@@ -5,7 +5,7 @@ import { describeView, renderScene, SCENE_GLB, WHOLE_SCENE } from '../render'
 export const inspectSceneTool = defineTool({
   name: 'inspect_scene',
   label: 'Look',
-  description: `Look at the scene. Renders ${SCENE_GLB} from a camera that orbits whatever it frames and always points at it, so you choose a direction rather than a position. Build with run_blender first: this renders the exported GLB, not scene.py.`,
+  description: `Look at the visible scene with hidden collision proxies omitted. Renders ${SCENE_GLB} from a camera that orbits whatever it frames and always points at it, so you choose a direction rather than a position. Build with run_blender first: this renders the exported GLB, not scene.py. Use inspect_physics for collision and spawn debugging.`,
   promptSnippet: 'render the scene from a camera you choose and look at it',
   parameters: Type.Object({
     azimuth: Type.Number({

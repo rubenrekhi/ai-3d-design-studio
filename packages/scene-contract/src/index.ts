@@ -75,7 +75,7 @@ export const DEFAULT_PLAYER_CONTROLLER: Readonly<PlayerControllerConfig> = {
   fallResetDistance: 12,
 }
 
-const PLAYER_CONTROLLER_LIMITS: {
+export const PLAYER_CONTROLLER_LIMITS: {
   [Key in keyof PlayerControllerConfig]: readonly [number, number]
 } = {
   height: [0.5, 4],

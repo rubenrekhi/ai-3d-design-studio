@@ -19,7 +19,13 @@ export const GOOD_SCENE = `import bpy
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.5))
 bpy.context.active_object.name = "Cube"
-bpy.ops.export_scene.gltf(filepath="scene.glb")
+settings = bpy.data.objects.new("__studio_scene_settings__", None)
+settings["studio_contract_version"] = 1
+settings["studio_scene_kind"] = "asset"
+bpy.context.scene.collection.objects.link(settings)
+bpy.ops.export_scene.gltf(
+    filepath="scene.glb", export_apply=True, export_extras=True
+)
 `
 
 export const BROKEN_SCENE = `import bpy
@@ -29,10 +35,10 @@ raise RuntimeError("boom")
 export function assetModule(name: string): string {
   return `import bpy
 
-def build(location=(0, 0, 0)):
+def build(location=(0, 0, 0), instance_name="${name}"):
     bpy.ops.mesh.primitive_cube_add(size=1, location=location)
     root = bpy.context.active_object
-    root.name = "${name}"
+    root.name = instance_name
     return root
 `
 }
