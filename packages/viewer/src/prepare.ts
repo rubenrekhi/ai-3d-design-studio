@@ -40,6 +40,8 @@ export interface ColliderDescription {
 export interface SkyDescription extends SkyConfig {
   /** Unit vector from the scene toward the sun, taken from its own light. */
   sunDirection: Vector3
+  /** The same light's strength, which the sky's ambient is held in step with. */
+  sunIntensity: number
 }
 
 export interface PreparedScene {
@@ -85,7 +87,7 @@ export function prepareScene(source: Object3D): PreparedScene {
   })
 
   const bounds = boundsOf(visual)
-  const sunDirection = brightestSunDirection(lights)
+  const sun = brightestSun(lights)
   for (const light of lights) castShadows(light, bounds, visual)
   visual.updateMatrixWorld(true)
 
@@ -138,8 +140,8 @@ export function prepareScene(source: Object3D): PreparedScene {
   // Without a sun there is no time of day to draw, so the scene keeps the
   // viewer's flat background rather than a sky invented for it.
   const sky =
-    skySettings.kind === 'daylight' && sunDirection !== undefined
-      ? { ...skySettings.config, sunDirection }
+    skySettings.kind === 'daylight' && sun !== undefined
+      ? { ...skySettings.config, ...sun }
       : undefined
 
   return {
@@ -161,16 +163,21 @@ export function prepareScene(source: Object3D): PreparedScene {
   }
 }
 
-function brightestSunDirection(lights: Light[]): Vector3 | undefined {
+function brightestSun(
+  lights: Light[],
+): { sunDirection: Vector3; sunIntensity: number } | undefined {
   let sun: DirectionalLight | undefined
   for (const light of lights) {
     if (!(light instanceof DirectionalLight)) continue
     if (sun === undefined || light.intensity > sun.intensity) sun = light
   }
   if (sun === undefined) return undefined
-  return new Vector3(0, 0, 1)
-    .applyQuaternion(sun.getWorldQuaternion(new Quaternion()))
-    .normalize()
+  return {
+    sunDirection: new Vector3(0, 0, 1)
+      .applyQuaternion(sun.getWorldQuaternion(new Quaternion()))
+      .normalize(),
+    sunIntensity: sun.intensity,
+  }
 }
 
 export function boundsOf(root: Object3D): Sphere {

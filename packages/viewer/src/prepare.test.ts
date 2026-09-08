@@ -160,6 +160,9 @@ describe('prepareScene', () => {
     // Aimed straight down, so the sun sits directly overhead.
     expect(prepared.sky.sunDirection.y).toBeCloseTo(1)
     expect(prepared.sky.turbidity).toBe(3)
+    expect(prepared.sky.sunIntensity).toBe(3)
+    // Clear unless the scene asks for cloud: the noise is the sky's only real cost.
+    expect(prepared.sky.cloudCoverage).toBe(0)
     disposePreparedScene(prepared)
   })
 
@@ -195,7 +198,7 @@ describe('prepareScene', () => {
     const prepared = prepareScene(gltf.scene)
     expect(prepared.kind).toBe('environment')
     expect(prepared.hasLights).toBe(true)
-    expect(prepared.sky).toMatchObject({ turbidity: 4, cloudCoverage: 0.35 })
+    expect(prepared.sky).toMatchObject({ turbidity: 4, cloudCoverage: 0.25 })
     expect(prepared.spawn?.position[1]).toBeCloseTo(0)
     expect(prepared.colliders.map((collider) => collider.name)).toEqual(
       expect.arrayContaining([

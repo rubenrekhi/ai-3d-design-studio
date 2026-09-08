@@ -35,6 +35,7 @@ import {
   type ColliderDescription,
   type SkyDescription,
 } from './prepare'
+import { skyEnvironmentIntensity } from './sky'
 import type {
   PlayerTuning,
   SceneViewerInfo,
@@ -171,7 +172,7 @@ export function SceneViewer({
       >
         <Canvas
           shadows
-          dpr={[1, 2]}
+          dpr={[1, 1.5]}
           camera={{ position: [5, 3.5, 7], fov: 50, near: 0.05, far: 4000 }}
           gl={createRenderer}
         >
@@ -298,6 +299,7 @@ function LoadedScene({
 
   return (
     <>
+      <StaticShadows key={src} />
       {prepared.sky !== undefined ? (
         <Sky sky={prepared.sky} center={prepared.bounds.center} />
       ) : null}
@@ -584,6 +586,25 @@ function SpawnDebug({ spawn }: { spawn: SpawnDescription }) {
  * sky becomes the environment map, which is what stops a face turned away from
  * every lamp going to black and gives a polished surface something to mirror.
  */
+/**
+ * Every mesh here is fixed and the player casts nothing, so re-rendering the
+ * shadow map each frame redraws an identical image. Rendering it once and
+ * holding it is the difference between a scene that runs and one that crawls.
+ */
+function StaticShadows() {
+  const gl = useThree((state) => state.gl)
+
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = false
+    gl.shadowMap.needsUpdate = true
+    return () => {
+      gl.shadowMap.autoUpdate = true
+    }
+  }, [gl])
+
+  return null
+}
+
 function Sky({ sky, center }: { sky: SkyDescription; center: Vector3 }) {
   const { gl, scene } = useThree()
 
@@ -618,12 +639,18 @@ function Sky({ sky, center }: { sky: SkyDescription; center: Vector3 }) {
 
     const target = generator.fromScene(staging)
     scene.environment = target.texture
+    scene.environmentIntensity = skyEnvironmentIntensity(
+      sky,
+      sky.sunDirection.y,
+      sky.sunIntensity,
+    )
     generator.dispose()
     source.geometry.dispose()
     source.material.dispose()
 
     return () => {
       scene.environment = null
+      scene.environmentIntensity = 1
       target.dispose()
     }
   }, [gl, scene, sky])

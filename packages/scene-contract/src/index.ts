@@ -171,9 +171,13 @@ export interface SkyConfig {
   cloudCoverage: number
 }
 
+/**
+ * Clear by default. The sky shader skips its noise entirely when coverage is
+ * zero, so cloud is the one setting here that costs frames rather than nothing.
+ */
 export const DEFAULT_SKY: Readonly<SkyConfig> = {
   turbidity: 3,
-  cloudCoverage: 0.3,
+  cloudCoverage: 0,
 }
 
 export const SKY_LIMITS: {

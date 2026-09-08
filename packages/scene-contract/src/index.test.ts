@@ -87,6 +87,7 @@ describe('sky', () => {
     )
     expect(result.errors).toEqual([])
     expect(result.config).toEqual({ turbidity: 9, cloudCoverage: 0.8 })
+    expect(DEFAULT_SKY.cloudCoverage).toBe(0)
   })
 
   it('reports values it cannot draw', () => {
