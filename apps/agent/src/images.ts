@@ -1,3 +1,8 @@
+import type {
+  SessionEntry,
+  SessionHeader,
+} from '@earendil-works/pi-coding-agent'
+import type { Conversation } from '@repo/shared'
 import type { AgentMessage } from './messages'
 import { describeShot, describeView, type Shot, type View } from './render'
 import { inspectSceneTool, previewAssetTool } from './tools'
@@ -49,4 +54,20 @@ export function stubImages(message: AgentMessage): AgentMessage {
         : block,
     ),
   }
+}
+
+/**
+ * The session document as durable storage should hold it: the header first,
+ * every entry after it, and no render left inside any of them.
+ */
+export function stubConversation(
+  header: SessionHeader | null,
+  entries: SessionEntry[],
+): Conversation {
+  const stubbed = entries.map((entry) =>
+    entry.type === 'message'
+      ? { ...entry, message: stubImages(entry.message) }
+      : { ...entry },
+  )
+  return header === null ? stubbed : [{ ...header }, ...stubbed]
 }
