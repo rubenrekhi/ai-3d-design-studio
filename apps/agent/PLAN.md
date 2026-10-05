@@ -321,7 +321,7 @@ lists both. `ARCHITECTURE.md` 11.1 has the full flag table and the flow.
 Nothing depends on this. It is the one phase the product could ship without, and it is here because
 P4 built the half the agent already uses alone.
 
-- [x] A `spawn_asset_builder` tool registered by `studioExtension`
+- [x] A `spawn_subagent` tool registered by `studioExtension`, with `asset_builder` and `critic` roles
 - [x] One asset-builder agent per asset, on the workspace as cwd, writing a flat `assets/<name>.py`
 - [x] In-process, on a nested `createAgentSessionFromServices()`
 - [x] A concurrency cap, and `executionMode: 'parallel'` on the tool
@@ -335,6 +335,15 @@ have isolated anything a prompt does not. The tools are `read`, `write`, `edit`,
 settings, run on `SessionManager.inMemory(workdir)` with the asset-builder prompt, and are capped at
 four at once. The parent gets one line back, checked against the file, which must exist and define
 `build()`. `subagent.test.ts` builds two at once and asserts that no image ever entered the parent.
+
+**Decided after the first real run.** The tool is `spawn_subagent(role, task, name?)` with roles
+defined in the harness: `asset_builder` as above, and `critic`, which gets `inspect_scene` and
+read-only file tools and returns a numbered list of what is wrong. Pi's own subagent example was not
+usable: it shells out to the `pi` CLI with pi's prompt and tools, and the sandbox has no `pi` CLI.
+The prompt is now directive — every asset module comes from a builder, a scene with assets gets a
+critic before it is finished, and `.blend` files are never saved — because a model left to choose
+built a dining room inline and saved a 1.7 MB `.blend` into the workspace. Verified on that same
+request with a real model.
 
 **Why it waits for P5 and P7.** Asset modules multiply the ways a scene can break, and the build
 guard is what makes invariant 7 true. Subagents also sit inside one run, so P7 still sees one user

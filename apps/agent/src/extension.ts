@@ -8,7 +8,7 @@ import { buildScene, hasScene } from './build'
 import { stubConversation, stubImages } from './images'
 import { diff, hashTree } from './manifest'
 import { lastAssistant, messagesOf, toolResultIds } from './messages'
-import { assetBuilderTool } from './subagent'
+import { spawnSubagentTool } from './subagent'
 import { runBlenderTool } from './tools'
 
 /**
@@ -47,7 +47,7 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   let guardRounds = 0
   let guardError: string | undefined
 
-  pi.registerTool(assetBuilderTool(opts.services))
+  pi.registerTool(spawnSubagentTool(opts.services))
 
   // Pi starts a fresh loop for every continuation — the guard's follow-up, a
   // retry, a compaction — and a run is the whole of them, so only the first
