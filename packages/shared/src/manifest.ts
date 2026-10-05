@@ -1,14 +1,23 @@
-export type FileEntry = { hash: string; size: number }
+import { z } from 'zod'
 
-export type Manifest = Record<string, FileEntry>
+export const fileEntrySchema = z.object({
+  hash: z.string(),
+  size: z.number().int().nonnegative(),
+})
+export type FileEntry = z.infer<typeof fileEntrySchema>
 
-export type ChangedFile = FileEntry & { path: string }
+export const manifestSchema = z.record(z.string(), fileEntrySchema)
+export type Manifest = z.infer<typeof manifestSchema>
 
-export type ChangedFiles = {
-  created: ChangedFile[]
-  modified: ChangedFile[]
-  deleted: string[]
-}
+export const changedFileSchema = fileEntrySchema.extend({ path: z.string() })
+export type ChangedFile = z.infer<typeof changedFileSchema>
+
+export const changedFilesSchema = z.object({
+  created: z.array(changedFileSchema),
+  modified: z.array(changedFileSchema),
+  deleted: z.array(z.string()),
+})
+export type ChangedFiles = z.infer<typeof changedFilesSchema>
 
 // The hasher (apps/agent) and materialize (apps/web) are inverses over this set, and materialize
 // deletes anything a manifest omits. If their exclusion logic ever diverged, a reconcile would erase
