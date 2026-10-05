@@ -122,7 +122,14 @@ Rules:
 
 `packages/viewer` is a host-neutral client component. It loads a GLB, renders glTF PBR materials,
 offers orbit and first-person modes, constructs only explicitly declared Rapier colliders, and runs
-an Ecctrl character with mouse look, WASD, run, jump, reset, and fall recovery. `apps/web` passes it a
+an Ecctrl character with mouse look, WASD, run, jump, reset, and fall recovery.
+
+It draws through `WebGPURenderer`, not `WebGLRenderer`. That is where three's own development goes —
+node materials and TSL target it, and `WebGLRenderer` is maintained rather than extended — and it is
+one renderer with two backends, not two code paths: `renderer.init()` falls back to three's WebGL2
+backend whenever WebGPU cannot be reached. The cost is bundle size, `three/webgpu` being roughly
+650 KB minified against `three`'s 357 KB. Nothing here is GPU-bound yet, so the choice is about
+which renderer keeps gaining features, not about frame time today. `apps/web` passes it a
 stored URL. `apps/preview` passes it the local host's current build URL. Neither shell implements its
 own renderer or controller.
 

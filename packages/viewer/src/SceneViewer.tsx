@@ -24,12 +24,8 @@ import {
   TrimeshCollider,
 } from '@react-three/rapier'
 import { Ecctrl, type EcctrlHandle } from 'ecctrl'
-import {
-  ACESFilmicToneMapping,
-  Quaternion,
-  SRGBColorSpace,
-  Vector3,
-} from 'three'
+import { Quaternion, Vector3 } from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import {
   disposePreparedScene,
   prepareScene,
@@ -51,6 +47,29 @@ const KEYBOARD_MAP = [
   { name: 'jump', keys: ['Space'] },
   { name: 'run', keys: ['ShiftLeft', 'ShiftRight'] },
 ]
+
+/**
+ * `init()` settles only once a backend is live, and three falls back to its own
+ * WebGL2 backend inside that call whenever WebGPU cannot be reached — a missing
+ * `navigator.gpu`, a refused adapter, or a device that never arrives. Returning
+ * the promise is what keeps the canvas from being handed a renderer that is
+ * still negotiating. Colour space and tone mapping are left to R3F, which sets
+ * sRGB and ACES Filmic on any renderer it configures.
+ */
+async function createRenderer(props: {
+  canvas: HTMLCanvasElement | EventTarget
+}): Promise<WebGPURenderer> {
+  const renderer = new WebGPURenderer({
+    // R3F widens the canvas to cover `createRoot` on an offscreen one, and
+    // declares its own `OffscreenCanvas` that three does not accept. The web
+    // `<Canvas>` this viewer renders always builds a real element.
+    canvas: props.canvas as HTMLCanvasElement,
+    antialias: true,
+    powerPreference: 'high-performance',
+  })
+  await renderer.init()
+  return renderer
+}
 
 export function SceneViewer({
   src,
@@ -116,11 +135,7 @@ export function SceneViewer({
           shadows
           dpr={[1, 2]}
           camera={{ position: [5, 3.5, 7], fov: 50, near: 0.05 }}
-          gl={{ antialias: true, powerPreference: 'high-performance' }}
-          onCreated={({ gl }) => {
-            gl.outputColorSpace = SRGBColorSpace
-            gl.toneMapping = ACESFilmicToneMapping
-          }}
+          gl={createRenderer}
         >
           <color attach="background" args={['#0b0d10']} />
           <Suspense fallback={null}>
