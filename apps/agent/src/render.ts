@@ -63,7 +63,10 @@ export function describeView(view: View): string {
   return `${subject} in ${SCENE_GLB} at ${angles(view)}`
 }
 
-export function describeShot(name: string, shot: Shot): string {
+export function describeShot(
+  name: string,
+  shot: Pick<Shot, 'label' | 'view'>,
+): string {
   return `"${name}" from ${shot.label} (${angles(shot.view)})`
 }
 

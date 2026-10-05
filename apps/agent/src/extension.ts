@@ -4,8 +4,9 @@ import type {
 } from '@earendil-works/pi-coding-agent'
 import type { BuildReport, Manifest } from '@repo/shared'
 import { buildScene, hasScene } from './build'
+import { stubImages } from './images'
 import { hashTree } from './manifest'
-import { lastAssistant } from './messages'
+import { lastAssistant, toolResultIds } from './messages'
 import { runBlenderTool } from './tools'
 
 /**
@@ -32,6 +33,7 @@ export function studioExtension(opts: StudioExtensionOptions): InlineExtension {
 
 function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   let inRun = false
+  let earlierResults = new Set<string>()
   let lastGoodBuild: Manifest | undefined
   let builds = 0
   let guardRounds = 0
@@ -39,12 +41,21 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   // Pi starts a fresh loop for every continuation — the guard's follow-up, a
   // retry, a compaction — and a run is the whole of them, so only the first
   // start after a settle begins one.
-  pi.on('agent_start', () => {
+  pi.on('agent_start', (_event, ctx) => {
     if (inRun) return
     inRun = true
     builds = 0
     guardRounds = 0
+    earlierResults = toolResultIds(ctx.sessionManager.getEntries())
   })
+
+  pi.on('context', (event) => ({
+    messages: event.messages.map((message) =>
+      message.role === 'toolResult' && earlierResults.has(message.toolCallId)
+        ? stubImages(message)
+        : message,
+    ),
+  }))
 
   pi.on('tool_call', (event) => {
     if (event.toolName !== runBlenderTool.name) return
