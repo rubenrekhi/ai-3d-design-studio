@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import {
   type AgentSessionRuntime,
+  type AgentSessionServices,
   type CreateAgentSessionFromServicesOptions,
   type CreateAgentSessionRuntimeFactory,
   createAgentSessionFromServices,
@@ -30,6 +31,7 @@ const STUDIO_TOOLS = [
   runBlenderTool.name,
   inspectSceneTool.name,
   previewAssetTool.name,
+  'spawn_asset_builder',
 ]
 
 export interface StudioAgentOptions {
@@ -84,14 +86,21 @@ export async function createStudioAgent(
     sessionManager,
     sessionStartEvent,
   }) => {
-    const services = await createAgentSessionServices({
+    let services: AgentSessionServices | undefined
+    const extension = studioExtension({
+      onCommit: opts.onCommit,
+      onBuild: opts.onBuild,
+      services: () => {
+        if (services === undefined) throw new Error('services not built yet')
+        return services
+      },
+    })
+    services = await createAgentSessionServices({
       cwd,
       agentDir,
       resourceLoaderOptions: {
         systemPrompt: SCENE_BUILDER_PROMPT,
-        extensionFactories: [
-          studioExtension({ onCommit: opts.onCommit, onBuild: opts.onBuild }),
-        ],
+        extensionFactories: [extension],
       },
     })
     const created = await createAgentSessionFromServices({
