@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { stdin } from 'node:process'
+import { stdin, stdout } from 'node:process'
 import {
   InteractiveMode,
   type SessionInfo,
@@ -9,9 +9,10 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { createStudioAgent } from './agent'
 import { select, text } from './ask'
+import { runProtocol } from './protocol'
 
 const USAGE =
-  'usage: studio-agent [--workdir <path> | --project <name> [--home <path>]] [--session <id>]'
+  'usage: studio-agent [--workdir <path> | --project <name> [--home <path>]] [--session <id>] [--prompt <text>]'
 
 const PROJECT_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
 const NAME_RULE =
@@ -22,6 +23,7 @@ interface CliArgs {
   home?: string
   project?: string
   session?: string
+  prompt?: string
 }
 
 function fail(message: string): never {
@@ -37,14 +39,16 @@ function parseArgs(argv: string[]): CliArgs {
       flag === '--workdir' ||
       flag === '--home' ||
       flag === '--project' ||
-      flag === '--session'
+      flag === '--session' ||
+      flag === '--prompt'
     ) {
       const value = argv[i + 1]
       if (value === undefined) fail(`${flag} requires a value`)
       if (flag === '--workdir') args.workdir = value
       else if (flag === '--home') args.home = value
       else if (flag === '--project') args.project = value
-      else args.session = value
+      else if (flag === '--session') args.session = value
+      else args.prompt = value
       i++
     } else {
       fail(`unknown argument: ${flag}\n${USAGE}`)
@@ -205,12 +209,13 @@ async function main(): Promise<void> {
   process.env.PI_SKIP_VERSION_CHECK = '1'
 
   const args = parseArgs(process.argv.slice(2))
-  if (
-    args.session !== undefined &&
-    args.workdir === undefined &&
-    args.project === undefined
-  ) {
+  const hasWorkspace = args.workdir !== undefined || args.project !== undefined
+  if (args.session !== undefined && !hasWorkspace) {
     fail(`--session needs --project or --workdir\n${USAGE}`)
+  }
+  if (args.prompt !== undefined) {
+    if (!hasWorkspace) fail(`--prompt needs --project or --workdir\n${USAGE}`)
+    if (args.prompt.trim() === '') fail('--prompt requires text')
   }
 
   let workdir: string
@@ -230,14 +235,27 @@ async function main(): Promise<void> {
   }
 
   mkdirSync(workdir, { recursive: true })
-  seedSettings(workdir)
 
   if (args.session !== undefined) {
     sessionFile = await findSession(workdir, args.session)
-  } else if (args.workdir === undefined && args.project === undefined) {
+  } else if (!hasWorkspace) {
     sessionFile = await chooseSession(workdir)
   }
 
+  // One run, events on stdout, then exit: the transport a product drives.
+  if (args.prompt !== undefined) {
+    process.exitCode = await runProtocol({
+      workdir,
+      sessionFile,
+      prompt: args.prompt,
+      emit: (event) => {
+        stdout.write(`${JSON.stringify(event)}\n`)
+      },
+    })
+    return
+  }
+
+  seedSettings(workdir)
   const runtime = await createStudioAgent({ workdir, sessionFile })
 
   const errors = runtime.diagnostics.filter((d) => d.type === 'error')
