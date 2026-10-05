@@ -1,26 +1,323 @@
 @import 'tailwindcss';
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ink: #f5f4ef;
+  --muted: #989a94;
+  --panel: #111310;
+  --line: rgb(255 255 255 / 10%);
+  --accent: #d9ff57;
+  --danger: #ff6c55;
+  --background: #090a08;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  min-height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% 0%, rgb(217 255 87 / 7%), transparent 30rem),
+    var(--background);
+  color: var(--ink);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+.studio-shell {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  padding: 22px;
+}
+
+.studio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px 18px;
+}
+
+.studio-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.studio-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.studio-mark {
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--accent);
+  border-radius: 2px;
+  box-shadow: inset 4px -4px 0 rgb(217 255 87 / 35%);
+  transform: rotate(45deg);
+}
+
+.workspace-panel {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-rows: auto minmax(460px, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 28px 90px rgb(0 0 0 / 42%);
+}
+
+.workspace-toolbar {
+  display: flex;
+  min-height: 78px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 15px 18px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.workspace-toolbar h1 {
+  margin: 3px 0 0;
+  font-size: clamp(1.15rem, 2vw, 1.5rem);
+  font-weight: 520;
+  letter-spacing: -0.025em;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.source-picker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.source-picker select {
+  min-width: 150px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  appearance: none;
+  background: #1a1c18;
+  color: var(--ink);
+  padding: 9px 32px 9px 11px;
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.viewer-frame {
+  position: relative;
+  min-height: 0;
+  background: #0b0d10;
+}
+
+.scene-viewer {
+  position: absolute !important;
+  inset: 0;
+}
+
+.viewer-message,
+.viewer-empty {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.viewer-message {
+  gap: 10px;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
+.viewer-spinner {
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: viewer-spin 0.8s linear infinite;
+}
+
+.viewer-empty {
+  flex-direction: column;
+  gap: 22px;
+  padding: 32px;
+  text-align: center;
+  background:
+    linear-gradient(rgb(255 255 255 / 2%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 2%) 1px, transparent 1px), #0b0d0a;
+  background-size: 42px 42px;
+}
+
+.viewer-empty h2 {
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: 1.15rem;
+  font-weight: 520;
+  letter-spacing: -0.02em;
+}
+
+.viewer-empty p {
+  max-width: 390px;
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.viewer-empty code {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 4%);
+  padding: 7px 9px;
+  color: #c4c6bf;
+  font-size: 0.68rem;
+}
+
+.empty-object {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  transform: rotate(30deg) skewY(-6deg);
+}
+
+.empty-object span {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgb(217 255 87 / 60%);
+}
+
+.empty-object span:nth-child(1) {
+  top: 0;
+  left: 0;
+}
+
+.empty-object span:nth-child(2) {
+  right: 0;
+  bottom: 0;
+  border-color: rgb(255 255 255 / 24%);
+}
+
+.empty-object span:nth-child(3) {
+  top: 9px;
+  left: 9px;
+  border-color: rgb(217 255 87 / 28%);
+}
+
+.scene-status {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 10px rgb(217 255 87 / 65%);
+}
+
+.status-dot-error {
+  background: var(--danger);
+  box-shadow: 0 0 10px rgb(255 108 85 / 55%);
+}
+
+.scene-status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-stats {
+  display: flex;
+  margin-left: auto;
+  align-items: center;
+  gap: 8px;
+  color: #c3c5bf;
+}
+
+@keyframes viewer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 680px) {
+  .studio-shell {
+    padding: 12px;
+  }
+
+  .studio-header {
+    padding-bottom: 12px;
+  }
+
+  .studio-header p {
+    display: none;
+  }
+
+  .workspace-panel {
+    grid-template-rows: auto minmax(440px, 1fr) auto;
+    border-radius: 13px;
+  }
+
+  .workspace-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .source-picker,
+  .source-picker select {
+    width: 100%;
+  }
+
+  .scene-stats {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .viewer-spinner {
+    animation: none;
+  }
 }
