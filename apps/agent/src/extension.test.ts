@@ -39,21 +39,26 @@ function toolResults(f: Fixture, toolName: string) {
 describe.skipIf(!hasBlender)('build guard', () => {
   it('feeds a broken build back and settles once it is green', async () => {
     const seen: string[] = []
+    const built: string[] = []
     const script = inOrder([
       { text: 'hi' },
       write('scene.py', GOOD_SCENE),
       { text: 'fixed' },
     ])
-    f = await fixture((context) => {
-      seen.push(userText(context, 'last'))
-      return script(context)
-    })
+    f = await fixture(
+      (context) => {
+        seen.push(userText(context, 'last'))
+        return script(context)
+      },
+      { onSceneBuilt: (workdir) => built.push(workdir) },
+    )
     await f.write('scene.py', BROKEN_SCENE)
     await f.runtime.session.prompt('say hi')
 
     expect(seen[1]).toContain('scene.py does not build')
     expect(seen[1]).toContain('boom')
     expect(f.builds.map((build) => build.ok)).toEqual([false, true])
+    expect(built).toEqual([f.workdir])
     expect(f.events.filter((e) => e.type === 'agent_settled')).toHaveLength(1)
     expect(f.events.at(-1)?.type).toBe('agent_settled')
 
@@ -83,17 +88,45 @@ describe.skipIf(!hasBlender)('build guard', () => {
   })
 
   it('does not rebuild a scene the model built and then left alone', async () => {
+    const built: string[] = []
     f = await fixture(
       inOrder([
         write('scene.py', GOOD_SCENE),
         call('run_blender'),
         { text: 'done' },
       ]),
+      { onSceneBuilt: (workdir) => built.push(workdir) },
     )
     await f.runtime.session.prompt('make a cube')
     expect(f.builds).toEqual([])
     expect(toolResults(f, 'run_blender').map((r) => r.isError)).toEqual([false])
+    expect(built).toEqual([f.workdir])
   }, 60_000)
+})
+
+describe('interactive commands', () => {
+  it('does not expose render without an interactive host', async () => {
+    f = await fixture(() => ({ text: 'done' }))
+    expect(
+      f.runtime.session.extensionRunner.getCommand('render'),
+    ).toBeUndefined()
+  })
+
+  it('registers render only when a human preview callback is present', async () => {
+    f = await fixture(() => ({ text: 'done' }), {
+      onRender: async () => ({
+        url: 'http://127.0.0.1:1234',
+        opened: true,
+        reused: false,
+      }),
+    })
+    expect(
+      f.runtime.session.extensionRunner.getCommand('render'),
+    ).toMatchObject({
+      name: 'render',
+      description: 'Open the current scene in the playable web viewer',
+    })
+  })
 })
 
 describe.skipIf(!hasBlender)('build cap', () => {

@@ -62,6 +62,12 @@ export interface StudioAgentOptions {
   onCommit?: (commit: Commit) => Promise<void>
   /** Called for each build the guard runs at the end of a run. */
   onBuild?: (build: BuildReport) => void
+  /** Opens the human-only local preview command when interactive. */
+  onRender?: (
+    workdir: string,
+  ) => Promise<{ url: string; opened: boolean; reused: boolean }>
+  /** Called after either an explicit or guard-triggered successful build. */
+  onSceneBuilt?: (workdir: string) => void
 }
 
 /**
@@ -96,6 +102,8 @@ export async function createStudioAgent(
     const extension = studioExtension({
       onCommit: opts.onCommit,
       onBuild: opts.onBuild,
+      onRender: opts.onRender,
+      onSceneBuilt: opts.onSceneBuilt,
       services: () => {
         if (services === undefined) throw new Error('services not built yet')
         return services

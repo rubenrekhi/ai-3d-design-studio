@@ -9,6 +9,7 @@ import {
 } from '@earendil-works/pi-coding-agent'
 import { createStudioAgent } from './agent'
 import { select, text } from './ask'
+import { createLocalPreview } from './local-preview'
 import { runProtocol } from './protocol'
 
 const USAGE =
@@ -256,7 +257,13 @@ async function main(): Promise<void> {
   }
 
   seedSettings(workdir)
-  const runtime = await createStudioAgent({ workdir, sessionFile })
+  const preview = createLocalPreview()
+  const runtime = await createStudioAgent({
+    workdir,
+    sessionFile,
+    onRender: (currentWorkdir) => preview.show(currentWorkdir),
+    onSceneBuilt: (currentWorkdir) => preview.sceneBuilt(currentWorkdir),
+  })
 
   const errors = runtime.diagnostics.filter((d) => d.type === 'error')
   if (errors.length > 0) {
@@ -267,7 +274,11 @@ async function main(): Promise<void> {
   const mode = new InteractiveMode(runtime, {
     modelFallbackMessage: runtime.modelFallbackMessage,
   })
-  await mode.run()
+  try {
+    await mode.run()
+  } finally {
+    await preview.close()
+  }
 }
 
 main().catch((error) => {
