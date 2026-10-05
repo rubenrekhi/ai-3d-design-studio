@@ -312,7 +312,11 @@ if module_name:
         )
     build()
     bpy.ops.export_scene.gltf(
-        filepath=params["glb"], export_apply=True, export_extras=True
+        filepath=params["glb"],
+        export_apply=True,
+        export_extras=True,
+        export_lights=True,
+        export_import_convert_lighting_mode="COMPAT",
     )
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
