@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks'
 
 const MACOS_BLENDER = '/Applications/Blender.app/Contents/MacOS/Blender'
 const DEFAULT_SCRIPT = 'scene.py'
-const DEFAULT_TIMEOUT_MS = 120_000
+const DEFAULT_TIMEOUT_MS = 14_400_000
 const MAX_REPORT_LINES = 40
 
 export interface RunBlenderOptions {
