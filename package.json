@@ -16,6 +16,7 @@
   },
   "scripts": {
     "web": "pnpm --filter @repo/web dev",
+    "preview": "pnpm --filter @repo/preview dev",
     "agent": "pnpm --filter @repo/agent dev",
     "build": "pnpm -r build",
     "agent:image": "docker buildx build --platform linux/amd64 -f apps/agent/Dockerfile -t agent:dev --load .",

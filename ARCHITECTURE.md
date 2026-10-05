@@ -86,6 +86,11 @@ Use these words with these meanings. Do not use synonyms.
 └────────────────────────────────────────────────────────────────┘
 ```
 
+The browser and local preview render through one shared package. Blender produces one self-contained
+GLB carrying visible meshes, explicit collision proxies, and authored player setup; the harness
+validates that artifact and the viewer executes it. The viewer never infers solidity from visible
+geometry.
+
 ---
 
 ## 4. Repository layout
@@ -96,8 +101,11 @@ ai-3d-design-studio/
 ├── .nvmrc                  the development Node version
 ├── apps/
 │   ├── web/                Next.js — UI, API, orchestration, storage
+│   ├── preview/            Vite — local shell for the shared viewer
 │   └── agent/              the harness — runs in a sandbox in production
 └── packages/
+    ├── scene-contract/     names, metadata, and scalar validation for a GLB
+    ├── viewer/             React Three Fiber, Rapier, and Ecctrl
     └── shared/             schemas and types for the wire protocol only
 ```
 
@@ -108,6 +116,55 @@ Rules:
 - **`apps/web` never imports `apps/agent`.** It imports `@vercel/sandbox` to start microVMs. The agent
   is a program that runs elsewhere. It is not a library.
 - Test for the rule above: delete `apps/web`. The agent must still build and run.
+
+### 4.1 Playable viewer and scene contract
+
+`packages/viewer` is a host-neutral client component. It loads a GLB, renders glTF PBR materials,
+offers orbit and first-person modes, constructs only explicitly declared Rapier colliders, and runs
+an Ecctrl character with mouse look, WASD, run, jump, reset, and fall recovery. `apps/web` passes it a
+stored URL. `apps/preview` passes it the local host's current build URL. Neither shell implements its
+own renderer or controller.
+
+`packages/scene-contract` is the small dependency-light seam shared by the harness and viewer. It
+contains reserved names, collision suffixes, engine-neutral controller fields, defaults, and scalar
+validation. It contains no React, Three.js, Blender, product, storage, session, or network logic. The
+contract does not belong in `packages/shared`, whose only subject is the harness wire protocol, and
+the harness never imports the heavy viewer package.
+
+A final GLB carries two reserved Empties. `__studio_scene_settings__` holds
+`studio_contract_version` and `studio_scene_kind` (`environment` or `asset`). The declaration is what
+lets the build guard reject a missing spawn instead of guessing whether the GLB was meant to be
+walkable. An environment also carries exactly one `__studio_player_spawn__`; its location is the
+player's feet, its rotation is the initial facing direction, and optional `studio_player_*` extras
+override human-scale controller defaults. `scene.py` exports with `export_apply=True` and
+`export_extras=True`.
+
+Collision is explicit and suffix-driven:
+
+| Suffix         | Rendered | Rapier shape | Use                                                    |
+| -------------- | -------- | ------------ | ------------------------------------------------------ |
+| `-col`         | yes      | trimesh      | already-simple floors, walls, ramps, and stairs        |
+| `-colonly`     | no       | trimesh      | irregular, concave, fixed structural proxies           |
+| `-convcolonly` | no       | convex hull  | furniture, fixtures, appliances, and other solid props |
+| none           | yes      | none         | intentionally penetrable visible detail                |
+
+The suffix is lowercase and final. Instance names are deliberate and unique; a Blender-generated
+name such as `Sofa-colonly.001` is invalid. Collision-only nodes remain in the GLB and are hidden by
+normal viewers and inspection tools, not omitted at export.
+
+High-detail render geometry and collision geometry have different jobs. A builder may add dense
+curves, cushions, seams, hardware, bevels, and surface relief to an object while representing its
+blocking volume with a few smooth proxies. Render meshes do not become collision merely because they
+are visible. This keeps movement smooth and physics cost independent of visual-detail passes.
+
+`/render` is a human-only interactive command, never a model tool. It starts or reuses a loopback-only
+host for the prebuilt `apps/preview` shell and the current workspace `scene.glb`, opens its URL, and
+reloads after successful builds. The host stops when the interactive CLI exits, not on pi's
+`session_shutdown`, because changing conversations emits that event while the process remains alive.
+
+The first delivery is static environment physics. Dynamic furniture, joints and doors, vehicles,
+multiplayer, AI navigation, gameplay triggers, a Godot importer, and texture-baking automation stay
+outside it. The naming convention intentionally preserves a clean Godot path later.
 
 ---
 
