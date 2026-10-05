@@ -135,6 +135,7 @@ export function prepareScene(source: Object3D): PreparedScene {
       contractVersion,
       colliderCount: colliders.length,
       hasSpawn: spawn !== undefined,
+      controller: spawn?.controller,
     },
   }
 }

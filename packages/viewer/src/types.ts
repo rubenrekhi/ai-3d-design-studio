@@ -7,6 +7,15 @@ export interface SceneViewerInfo {
   contractVersion?: number
   colliderCount: number
   hasSpawn: boolean
+  /** The scene's authored controller, if it declared a spawn. */
+  controller?: PlayerControllerConfig
+}
+
+/** Viewer-side overrides of the authored controller. Nothing is persisted. */
+export interface PlayerTuning {
+  walkSpeed: number
+  runSpeed: number
+  jumpSpeed: number
 }
 
 export interface SceneViewerProps {
