@@ -1,7 +1,8 @@
 # Architecture
 
-> **Status: design, not implementation.** No part of this document is built yet. It records decisions
-> so that nobody must make them twice. Update it when reality changes.
+> **Status: the harness is built, the product is design.** `apps/agent` implements sections 5
+> through 8 and 11.1; `apps/web` and the store do not exist yet. This document records decisions so
+> that nobody must make them twice. Update it when reality changes.
 
 A person and an agent build 3D assets and environments together. The person describes a change. The
 agent writes Python, runs Blender, and inspects the result. The person sees the new scene in a live
@@ -74,9 +75,10 @@ Use these words with these meanings. Do not use synonyms.
 │ · pi owns the agent loop, sessions, and compaction             │
 │ · file tools, restricted to the workspace                      │
 │ · run_blender, inspect_scene, preview_asset                    │
-│ · studioExtension: build guard, hashing, onCommit              │
+│ · spawn_asset_builder: an asset built on its own session       │
+│ · studioExtension: build guard, hashing, stubs, onCommit       │
 └───────────────┬────────────────────────────────────────────────┘
-                │ onCommit(changed, workdir)
+                │ onCommit(commit)
 ┌───────────────▼────────────────────────────────────────────────┐
 │ Store adapter — chosen by the caller, never by the harness     │
 │ absent in mode A. Supabase in modes B and C, local or hosted.  │
@@ -165,7 +167,8 @@ export async function createStudioAgent(opts: {
   workdir: string
   sessionFile?: string
   model?: Model
-  onCommit?: (changed: ChangedFiles, workdir: string) => Promise<void>
+  onCommit?: (commit: Commit) => Promise<void>
+  onBuild?: (build: BuildReport) => void
 }) {
   // Conversations live inside the workspace, and the workspace is the cwd —
   // never the process cwd, which is `apps/agent` under `pnpm agent`.
@@ -182,13 +185,14 @@ export async function createStudioAgent(opts: {
       agentDir,
       resourceLoaderOptions: {
         systemPrompt: SCENE_BUILDER_PROMPT,
-        extensionFactories: [studioExtension(opts.onCommit)],
+        extensionFactories: [studioExtension({ onCommit, onBuild, services })],
       },
     })
     const created = await createAgentSessionFromServices({
       services,
       sessionManager,
       model: opts.model,
+      tools: STUDIO_TOOLS, // read, write, edit, ls, find, grep, and ours
       customTools: [runBlenderTool, inspectSceneTool, previewAssetTool],
     })
     return { ...created, services, diagnostics: services.diagnostics }
@@ -214,11 +218,18 @@ the ones already there.
 way to wrap one in the other, so the harness builds the runtime. It is a superset: a product caller
 reads its session as `runtime.session`.
 
-`studioExtension` is the only product seam. It owns the build guard, hashes the workspace, and calls
-`onCommit`. Pi does everything else.
+`studioExtension` is the only product seam. It owns the build guard, hashes the workspace, stubs old
+renders out of the model's view, registers `spawn_asset_builder`, and calls `onCommit`. Pi does
+everything else.
 
 `onCommit` is optional. Without it you get a working 3D agent in a terminal. That is the fastest
 development loop and the target for integration tests.
+
+`onCommit` receives one `Commit`, whose schema lives in `packages/shared`: a `status` of `ok`,
+`error`, or `aborted`, the workdir, pi's session id, the leaf entry id, and the conversation document
+with every render already replaced by its stub. Only `status: 'ok'` carries `manifest` and `changed`,
+so a failed run has no files to commit by construction. `onBuild` reports each build the guard ran;
+builds the model asked for arrive as tool results.
 
 The product reads events with `runtime.session.subscribe()`. It intercepts tool calls with
 `pi.on('tool_call')`, which can block a call and not only observe it.
@@ -262,6 +273,26 @@ person's to edit afterwards.
 Do not silence pi's warnings the same way. The banner is branding; a warning about billing or a
 missing model is information, and `warnings.anthropicExtraUsage` belongs to whoever is paying.
 
+### 5.7 Asset builders
+
+`spawn_asset_builder(name, brief)` builds one `assets/<name>.py` on a nested session in the same
+process: `createAgentSessionFromServices` on `SessionManager.inMemory(workdir)`, the asset-builder
+prompt, the parent's model, and `read`, `write`, `edit`, `ls`, `find`, `grep`, and `preview_asset`.
+No `run_blender`, because the scene is not the builder's to build, and no `inspect_scene`, because
+nothing of its is placed yet. The tool runs in parallel with its siblings and caps live builders at
+four, which is a Blender-per-preview limit rather than a pi one.
+
+The builder's cwd is the workspace, not `assets/<name>/`. The asset contract stays a flat module
+(7.4), `preview_asset` works unchanged in the child, and the builder can read `scene.py` to match
+scale and style. Isolation is a separate message list, prompt, and tool set, not a directory: pi's
+file tools resolve relative paths against cwd and do not fence them, so a directory would have bought
+nothing a prompt does not.
+
+What the parent sees is one tool result: the module path and the builder's one-line report, checked
+against the file, which must exist and define `build()`. The builder's contact sheets never enter the
+parent's context, and its session is discarded. A builder that ends in an error, an abort, or no
+module is an error result, and the run continues.
+
 ---
 
 ## 6. The build guard
@@ -269,24 +300,46 @@ missing model is information, and `warnings.anthropicExtraUsage` belongs to whoe
 Invariant 7 is enforced in the extension. Pi is not modified.
 
 ```ts
-pi.on('agent_end', async () => {
-  const build = await runBlender()
-  if (!build.ok) {
-    pi.sendMessage(
-      { customType: 'build-error', content: build.stderr, display: true },
-      { deliverAs: 'followUp', triggerTurn: true },
-    )
-  }
+pi.on('agent_end', async (event, ctx) => {
+  const last = lastAssistant(event.messages)
+  if (last?.stopReason === 'error' || last?.stopReason === 'aborted') return
+  if (!(await hasScene(ctx.cwd))) return
+  if (sameManifest(await hashTree(ctx.cwd), lastGoodBuild)) return
+
+  const build = await buildScene(ctx.cwd, { signal: ctx.signal })
+  if (build.ok) return
+  if (++guardRounds > MAX_GUARD_ROUNDS) return (guardError = build.error)
+  pi.sendMessage(
+    { customType: 'build-error', content: build.error, display: true },
+    { deliverAs: 'followUp', triggerTurn: true },
+  )
 })
 ```
 
-Two points control this design:
+Seven points control this design:
 
 - **Use `sendMessage`, not `sendUserMessage`.** A message with a `customType` enters the model's
   context but is not attributed to the person. A failed build must never look like a user request.
 - **`agent_settled` waits for queued messages.** It fires only when no retry, no compaction, and no
   follow-up remains. The queued follow-up above therefore delays it. The commit runs once per run,
   after the build is good.
+- **The guard does not run after an error or an abort.** Pi may still retry the first, and the second
+  is over. A follow-up in either case would call the model again to no purpose, and after an
+  exhausted retry it would loop.
+- **It does not run when there is no `scene.py`**, and it does not rebuild a workspace whose hash
+  matches the one taken after the model's own last successful `run_blender`. The common ending —
+  build, look, reply — costs no second build.
+- **Five rounds, then it stops.** After five build errors fed back in one run the harness settles
+  anyway and reports the run as an error, so nothing is committed from it. Invariant 7 holds and the
+  loop is bounded.
+- **Ten builds per run.** `run_blender` is refused past its tenth call in a run, with a result that
+  tells the model to finish. The guard still builds whatever it leaves, so the cap bounds the
+  model's own loop without letting a broken scene through. Nothing else bounds a run: pi has no turn
+  limit, and a turn's output is capped only by the model's `maxTokens`.
+- **A run spans several of pi's loops.** Every continuation — the guard's follow-up, a retry, a
+  compaction — starts a fresh loop and fires `agent_start` again. The extension counts a run from the
+  first `agent_start` after a settle, so manifest A and the image snapshot of section 7 are taken
+  once.
 
 ---
 
@@ -319,17 +372,22 @@ pixels again. A stub costs about 20 tokens. An image costs about 1500.
 Pi's `context` event fires before every model call and receives a deep copy of the messages.
 
 ```ts
-let runStart = 0
+let earlier = new Set<string>()
 pi.on('agent_start', (_e, ctx) => {
-  runStart = ctx.sessionManager.getEntries().length
+  earlier = toolResultIds(ctx.sessionManager.getEntries())
 })
-pi.on('context', async (event) => ({
-  messages: stubImagesBefore(event.messages, runStart),
+pi.on('context', (event) => ({
+  messages: event.messages.map((m) =>
+    m.role === 'toolResult' && earlier.has(m.toolCallId) ? stubImages(m) : m,
+  ),
 }))
 ```
 
-The snapshot at `agent_start` makes the boundary a run and not a turn. Messages from the current run
-keep their images. Earlier messages get stubs.
+The snapshot at the start of a run makes the boundary a run and not a turn. It is a set of tool-call
+ids rather than an entry index: the `context` event carries messages, not entries, and a compaction
+mid-run shortens the prefix, but an id survives both. Results made in the current run keep their
+images. Earlier ones get stubs. Images a person attached to their own message are not renders and
+are left alone.
 
 The `context` event does not change the stored session. History stays complete, the UI can show every
 render, and rewind is unaffected. Only the model's view is reduced.
@@ -362,7 +420,9 @@ world coordinates, and a distance would need a scale it has no way to guess.
 `assets/<name>.py`, calls its `build()` in an empty scene, exports that, and returns the four fixed
 views of the table above as four image blocks in one result at 400×300 — the same token cost as one
 800×600 image. It answers "is this asset well made"; `inspect_scene(framing: …)` answers "does it sit
-right in the scene". Its stub needs only the name and the view's label, so it fits a line easily.
+right in the scene". Its stub needs only the name and the view's label, so it fits a line easily:
+`[render — "chair" from the front (azimuth 0°, elevation 10°). Re-run preview_asset to look again.]`,
+one per image.
 
 `inspect_scene` renders `scene.glb` and not the live Blender scene, at 800×600 through the Workbench
 engine. Rendering the export is what makes 7.5's rule hold: the image is the stored GLB seen from
@@ -385,10 +445,10 @@ the model. It is the recipe. `[render — the whole scene in scene.glb at azimut
 
 Two mechanisms, at two different points:
 
-| Mechanism | Where           | Purpose                                 | Effect on the file        |
-| --------- | --------------- | --------------------------------------- | ------------------------- |
-| **Stub**  | `context` event | Keep old images out of the model's view | None. Deep copy only.     |
-| **Strip** | The sync step   | Keep base64 out of durable storage      | Image blocks are dropped. |
+| Mechanism | Where           | Purpose                                 | Effect on the file         |
+| --------- | --------------- | --------------------------------------- | -------------------------- |
+| **Stub**  | `context` event | Keep old images out of the model's view | None. Deep copy only.      |
+| **Strip** | The commit      | Keep base64 out of durable storage      | Image blocks become stubs. |
 
 The stub solves token cost. The strip solves storage cost. They are independent, and section 11.3
 shows that one mode uses only the first.
@@ -415,9 +475,10 @@ those, store that specific output as a deliberate exception. Do not build a gene
 5. agent_end → the build guard runs. On failure it queues a follow-up
      message and the loop continues, which delays settle.
 6. agent_settled → the extension hashes the workspace  →  manifest B.
-7. onCommit(diff(A, B), workdir) uploads changed blobs, strips image blocks
-     out of the conversation, then posts the manifest and the stripped
-     conversation together.  Mode A has no onCommit and stops at step 6.
+7. onCommit({ status, manifest: B, changed: diff(A, B), conversation, … })
+     receives the conversation with its renders already stubbed. The product
+     uploads changed blobs, then posts the manifest and the conversation
+     together.  Mode A has no onCommit and stops at step 6.
 8. The API writes sessions.history and version_files, then the versions row LAST.
 ```
 
@@ -445,8 +506,11 @@ the newest version.
 `agent_settled` is emitted from a `finally` block. It fires on errors, on aborts, and on token
 exhaustion. That is why it serves both rows of the table. Two consequences:
 
-- It carries no result. To choose a row, read the `stopReason` of the last assistant message
-  (`"error"` or `"aborted"`). Do not assume that settle means success.
+- It carries no result. To choose a row, the extension reads the `stopReason` of the last assistant
+  message (`"error"` or `"aborted"`) and its own guard's verdict — a run that used up its five
+  rounds is an error too. Do not assume that settle means success. The rows are then a type: only a
+  `Commit` with `status: 'ok'` carries `manifest` and `changed`, and every status carries the
+  conversation.
 - It does not fire if the run never started. A prompt rejected before start emits neither
   `agent_start` nor `agent_settled`. Handle that case at the `prompt()` call site.
 
@@ -560,7 +624,8 @@ transactional writes with the version row and SQL over the history.
 update. An untouched pi session reaches tens of megabytes of base64, so every save would rewrite every
 render ever taken, for data that nothing queries.
 
-So the sync step deletes image blocks and keeps the stubs. Base64 never reaches Postgres.
+So the harness replaces every image block with its stub before the conversation reaches `onCommit`,
+and base64 never reaches Postgres.
 
 Pi's session file is append-only, so we cannot remove the bytes after pi writes them. We do not try.
 The file in the workspace keeps its images and dies with the sandbox. The durable copy is the stripped
@@ -695,6 +760,7 @@ harness beneath it may not.
 | `--project <name>` | `<home>/projects/<name>/workspace`, created if it does not exist.              |
 | `--home <parent>`  | The root that `--project` resolves against.                                    |
 | `--session <id>`   | A conversation in `<workdir>/.pi/`. Needs a workspace flag. New one if absent. |
+| `--prompt <text>`  | Runs one message to settle, writes events on stdout, exits. Needs a workspace. |
 
 **`--project` is arithmetic; `--session` is a lookup.** A name maps to a path with no search, so
 opening and creating are the same operation and the same name reaches the same scene from any
@@ -747,6 +813,29 @@ within the project, so what is on screen is always something `--session` accepts
 
 Fall back to the usage error when stdin is not a TTY. A piped or scripted invocation must fail
 rather than hang on a prompt nobody can answer.
+
+**`--prompt` is the transport.** It runs one message to settle, writes one JSON object per line on
+stdout, and exits: `0` when the run committed, `2` when it settled on an error or an abort, `1` when
+it never ran. Nothing else is written to stdout; pi's warnings and extension errors go to stderr.
+Split records on `\n` only — never with `readline`, which also splits on U+2028 and U+2029, both
+legal inside a JSON string. `harnessEventSchema` in `packages/shared` is the contract.
+
+| Event         | Carries                                                                          |
+| ------------- | -------------------------------------------------------------------------------- |
+| `session`     | Pi's session id and file. Always first.                                          |
+| `run_start`   | —                                                                                |
+| `text_delta`  | Streamed assistant text.                                                         |
+| `assistant`   | A finished assistant message: text, `stopReason`, and `error` when there is one. |
+| `tool_call`   | Id, name, arguments.                                                             |
+| `tool_result` | Id, name, `ok`, text, an image count, and the tool's `details`. Never pixels.    |
+| `build`       | Each build the guard ran.                                                        |
+| `commit`      | The `Commit` handed to `onCommit`.                                               |
+| `run_end`     | `status`, and the error when there is one. Always last.                          |
+| `error`       | The run never started: no model, a rejected prompt.                              |
+
+Modes B and C read `commit` and do the storage work in the product process, so the store adapter
+lives there on every transport and the harness keeps no network client. In mode B the changed files
+are on the product's own disk. How their bytes leave a mode C sandbox is open (section 16).
 
 ### 11.2 The agent home
 
@@ -1017,6 +1106,11 @@ may need its own repository.
 
 - Locking a project while two of its sessions run at once. Both write `scene.py`, and both commit
   versions that need an `n`. Section 11.2 notes that a lock on the session file does not cover this.
+- Moving changed files out of a mode C sandbox. The `commit` event names them; either the product
+  reads them through the sandbox API, or an uploader inside the sandbox process takes signed URLs
+  (section 14). The protocol serves both, and neither is built.
+- Whether the harness should strip images a person attached to their own message. They are not
+  renders and cannot be rebuilt, so today they stay in the conversation and would reach Postgres.
 - Whether the conversation a rewind creates in section 10's third case should be told what it
   inherited. It opens onto a workspace with a past it cannot see.
 - Whether to keep compaction on. It is on by default (`compaction.enabled`, `keepRecentTokens: 20000`)
