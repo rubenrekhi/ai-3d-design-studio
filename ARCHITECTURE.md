@@ -124,12 +124,23 @@ Rules:
 offers orbit and first-person modes, constructs only explicitly declared Rapier colliders, and runs
 an Ecctrl character with mouse look, WASD, run, jump, reset, and fall recovery.
 
-It draws through `WebGPURenderer`, not `WebGLRenderer`. That is where three's own development goes —
-node materials and TSL target it, and `WebGLRenderer` is maintained rather than extended — and it is
-one renderer with two backends, not two code paths: `renderer.init()` falls back to three's WebGL2
-backend whenever WebGPU cannot be reached. The cost is bundle size, `three/webgpu` being roughly
-650 KB minified against `three`'s 357 KB. Nothing here is GPU-bound yet, so the choice is about
-which renderer keeps gaining features, not about frame time today. `apps/web` passes it a
+It is plain `three` driven directly: a `SceneManager` class owning a `WebGLRenderer`, an
+`EffectComposer`, and its own `requestAnimationFrame` loop, with React reduced to mounting a canvas
+and rendering the toolbar. It was React Three Fiber over `WebGPURenderer`, with Rapier for physics
+and Ecctrl for the character, and that combination could not be made to feel right. A reconciliation
+pass between every frame and the screen makes frame delivery uneven, which reads as juddering rather
+than as a lower number; a physics engine cooked a trimesh collider for every declared collision mesh
+on load and stepped a world every frame for scenes in which nothing moves; and the WebGPU path is
+newer and less optimised than the WebGL one the post-processing passes are written against. Dropping
+all of it took the bundle from 1,367 KB gzipped to 354 KB.
+
+Collision is `Octree` and `Capsule` from three's own addons — a spatial tree over the declared
+collision triangles, built once, queried with a capsule sweep. Movement is a fixed 120 Hz step with
+the camera interpolated between steps, so the view does not judder on a display whose refresh rate
+is not a multiple of it. Tone mapping is AgX at 0.8 exposure rather than ACES at 1, because a sky
+spans hundreds of times more range than ACES will hold and the difference is the whole scene turning
+white. `N8AOPass` supplies ambient occlusion, which is most of what makes geometry read as sitting
+in a room rather than floating in one, and no amount of light tuning substitutes for it. `apps/web` passes it a
 stored URL. `apps/preview` passes it the local host's current build URL. Neither shell implements its
 own renderer or controller.
 
