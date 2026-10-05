@@ -5,7 +5,7 @@ import type {
 import type { Conversation } from '@repo/shared'
 import type { AgentMessage } from './messages'
 import { describeShot, describeView, type Shot, type View } from './render'
-import { inspectSceneTool, previewAssetTool } from './tools'
+import { inspectPhysicsTool, inspectSceneTool, previewAssetTool } from './tools'
 
 type ToolResultMessage = Extract<AgentMessage, { role: 'toolResult' }>
 
@@ -21,11 +21,25 @@ function stubFor(message: ToolResultMessage, index: number): string {
       return `[render — ${describeView(view)}. Re-run ${inspectSceneTool.name} to look again.]`
     }
   }
+  if (message.toolName === inspectPhysicsTool.name) {
+    const view = (message.details as { view?: View } | undefined)?.view
+    if (view !== undefined) {
+      return `[physics render — ${describeView(view)}, with collision proxies and the player spawn shown. Re-run ${inspectPhysicsTool.name} to look again.]`
+    }
+  }
   if (message.toolName === previewAssetTool.name) {
     const details = message.details as
-      { name?: string; shots?: Pick<Shot, 'label' | 'view'>[] } | undefined
+      | {
+          name?: string
+          physics?: boolean
+          shots?: Pick<Shot, 'label' | 'view'>[]
+        }
+      | undefined
     const shot = details?.shots?.[index]
     if (details?.name !== undefined && shot !== undefined) {
+      if (details.physics === true) {
+        return `[physics render — ${describeShot(details.name, shot)}, with collision proxies shown. Re-run ${previewAssetTool.name} with physics=true to look again.]`
+      }
       return `[render — ${describeShot(details.name, shot)}. Re-run ${previewAssetTool.name} to look again.]`
     }
   }

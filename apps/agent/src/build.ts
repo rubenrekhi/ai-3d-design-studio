@@ -1,12 +1,19 @@
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { lastLines, runBlender } from './blender'
+import { type PhysicsReport, validateScenePhysics } from './physics'
 import { SCENE_GLB } from './render'
 
 export const SCENE_SCRIPT = 'scene.py'
 
 export type Build =
-  | { ok: true; durationMs: number; size: number; printed: string }
+  | {
+      ok: true
+      durationMs: number
+      size: number
+      printed: string
+      physics: PhysicsReport
+    }
   | { ok: false; durationMs: number; error: string }
 
 /**
@@ -35,11 +42,21 @@ export async function buildScene(
     }
   }
 
+  const validation = await validateScenePhysics(workdir, opts)
+  if (!validation.ok) {
+    return {
+      ok: false,
+      durationMs: build.durationMs + validation.durationMs,
+      error: validation.error,
+    }
+  }
+
   return {
     ok: true,
-    durationMs: build.durationMs,
+    durationMs: build.durationMs + validation.durationMs,
     size,
     printed: lastLines(build.stdout),
+    physics: validation.report,
   }
 }
 

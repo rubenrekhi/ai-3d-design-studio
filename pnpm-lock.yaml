@@ -234,6 +234,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 0.83.0
         version: 0.83.0(supports-color@7.2.0)(ws@8.21.3)(zod@4.4.3)
+      '@repo/scene-contract':
+        specifier: workspace:*
+        version: link:../../packages/scene-contract
       '@repo/shared':
         specifier: workspace:*
         version: link:../../packages/shared

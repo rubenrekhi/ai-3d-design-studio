@@ -7,6 +7,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
 import { ASSET_BUILDER_PROMPT, CRITIC_PROMPT } from './prompt'
+import { inspectPhysicsTool } from './tools/inspect-physics'
 import { inspectSceneTool } from './tools/inspect-scene'
 import { previewAssetTool } from './tools/preview-asset'
 
@@ -33,7 +34,14 @@ export const ROLES: Record<Role, { prompt: string; tools: string[] }> = {
   },
   critic: {
     prompt: CRITIC_PROMPT,
-    tools: ['read', 'ls', 'find', 'grep', inspectSceneTool.name],
+    tools: [
+      'read',
+      'ls',
+      'find',
+      'grep',
+      inspectSceneTool.name,
+      inspectPhysicsTool.name,
+    ],
   },
 }
 
@@ -79,7 +87,7 @@ export function subagentOpener(
       model: ctx.model,
       thinkingLevel: ctx.thinkingLevel,
       tools: ROLES[role].tools,
-      customTools: [previewAssetTool, inspectSceneTool],
+      customTools: [previewAssetTool, inspectSceneTool, inspectPhysicsTool],
     })
     return session
   }

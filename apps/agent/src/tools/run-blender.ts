@@ -18,10 +18,14 @@ export const runBlenderTool = defineTool({
       content: [
         {
           type: 'text' as const,
-          text: `Built ${SCENE_GLB} (${Math.round(build.size / 1024)} KB) in ${build.durationMs}ms.\n\n${build.printed}`,
+          text: `Built and validated ${SCENE_GLB} (${Math.round(build.size / 1024)} KB) in ${build.durationMs}ms. Physics: ${build.physics.kind}, ${build.physics.colliderCount} collider${build.physics.colliderCount === 1 ? '' : 's'}, ${build.physics.hasSpawn ? 'spawn ready' : 'no spawn'}.\n\n${build.printed}`,
         },
       ],
-      details: { durationMs: build.durationMs, size: build.size },
+      details: {
+        durationMs: build.durationMs,
+        size: build.size,
+        physics: build.physics,
+      },
     }
   },
 })
