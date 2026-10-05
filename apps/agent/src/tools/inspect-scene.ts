@@ -1,6 +1,11 @@
 import { defineTool } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
-import { describeView, renderScene, SCENE_GLB, WHOLE_SCENE } from '../render'
+import {
+  describeView,
+  renderScene,
+  SCENE_GLB,
+  WHOLE_SCENE,
+} from '../blender/render'
 
 export const inspectSceneTool = defineTool({
   name: 'inspect_scene',

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createLocalPreview, type LocalPreview } from './local-preview'
+import { createLocalPreview, type LocalPreview } from './preview'
 
 const roots: string[] = []
 const previews: LocalPreview[] = []

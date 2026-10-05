@@ -1,7 +1,7 @@
 import { defineTool } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
-import { buildScene } from '../build'
-import { SCENE_GLB } from '../render'
+import { buildScene } from '../blender/build'
+import { SCENE_GLB } from '../blender/render'
 
 export const runBlenderTool = defineTool({
   name: 'run_blender',

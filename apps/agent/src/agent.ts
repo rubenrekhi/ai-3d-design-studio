@@ -11,7 +11,7 @@ import {
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
 import type { BuildReport, Commit } from '@repo/shared'
-import { studioExtension } from './extension'
+import { studioExtension } from './extension/studio'
 import { SCENE_BUILDER_PROMPT } from './prompt'
 import {
   inspectPhysicsTool,

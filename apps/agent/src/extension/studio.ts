@@ -4,12 +4,16 @@ import type {
   InlineExtension,
 } from '@earendil-works/pi-coding-agent'
 import type { BuildReport, Commit, Manifest } from '@repo/shared'
-import { buildScene, hasScene } from './build'
-import { stubConversation, stubImages } from './images'
+import { buildScene, hasScene } from '../blender/build'
+import { stubConversation, stubImages } from '../conversation/images'
 import { diff, hashTree } from './manifest'
-import { lastAssistant, messagesOf, toolResultIds } from './messages'
-import { spawnSubagentTool } from './subagent'
-import { runBlenderTool } from './tools'
+import {
+  lastAssistant,
+  messagesOf,
+  toolResultIds,
+} from '../conversation/messages'
+import { spawnSubagentTool } from '../subagents/spawn-subagent'
+import { runBlenderTool } from '../tools'
 
 /**
  * How many build errors one run gets fed back before the harness stops

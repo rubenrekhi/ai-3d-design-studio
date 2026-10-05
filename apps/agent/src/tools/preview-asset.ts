@@ -1,6 +1,6 @@
 import { defineTool } from '@earendil-works/pi-coding-agent'
 import { Type } from 'typebox'
-import { ASSETS_DIR, describeShot, renderAsset } from '../render'
+import { ASSETS_DIR, describeShot, renderAsset } from '../blender/render'
 
 export const previewAssetTool = defineTool({
   name: 'preview_asset',

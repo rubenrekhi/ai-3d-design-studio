@@ -1,5 +1,5 @@
 import type { HarnessEvent, RunStatus } from '@repo/shared'
-import { createStudioAgent } from './agent'
+import { createStudioAgent } from '../agent'
 import { toHarnessEvents } from './events'
 
 export interface ProtocolRun {

@@ -6,10 +6,10 @@ import {
   type ExtensionContext,
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
-import { ASSET_BUILDER_PROMPT, CRITIC_PROMPT } from './prompt'
-import { inspectPhysicsTool } from './tools/inspect-physics'
-import { inspectSceneTool } from './tools/inspect-scene'
-import { previewAssetTool } from './tools/preview-asset'
+import { ASSET_BUILDER_PROMPT, CRITIC_PROMPT } from '../prompt'
+import { inspectPhysicsTool } from '../tools/inspect-physics'
+import { inspectSceneTool } from '../tools/inspect-scene'
+import { previewAssetTool } from '../tools/preview-asset'
 
 export type Role = 'asset_builder' | 'critic'
 
