@@ -8,6 +8,8 @@ import {
   getAgentDir,
   SessionManager,
 } from '@earendil-works/pi-coding-agent'
+import type { BuildReport } from '@repo/shared'
+import { studioExtension } from './extension'
 import { SCENE_BUILDER_PROMPT } from './prompt'
 import { inspectSceneTool, previewAssetTool, runBlenderTool } from './tools'
 
@@ -41,14 +43,16 @@ export interface StudioAgentOptions {
    * match, which is the caller's job for the same reason `workdir` is.
    */
   sessionFile?: string
+  /** Called for each build the guard runs at the end of a run. */
+  onBuild?: (build: BuildReport) => void
 }
 
 /**
- * The harness: pi, wired to keep its conversations inside the workspace.
+ * The harness: pi with the scene-building prompt, the three Blender tools,
+ * and one extension that guards the build at the end of every run.
  *
  * Returns pi's runtime rather than a bare session because the interactive TUI
- * needs it; product callers read `runtime.session`. Later phases add the system
- * prompt, the 3D tools, and the studio extension here.
+ * needs it; product callers read `runtime.session`.
  */
 export async function createStudioAgent(
   opts: StudioAgentOptions,
@@ -73,7 +77,10 @@ export async function createStudioAgent(
     const services = await createAgentSessionServices({
       cwd,
       agentDir,
-      resourceLoaderOptions: { systemPrompt: SCENE_BUILDER_PROMPT },
+      resourceLoaderOptions: {
+        systemPrompt: SCENE_BUILDER_PROMPT,
+        extensionFactories: [studioExtension({ onBuild: opts.onBuild })],
+      },
     })
     const created = await createAgentSessionFromServices({
       services,
