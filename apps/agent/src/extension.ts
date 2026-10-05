@@ -15,6 +15,12 @@ import { runBlenderTool } from './tools'
  */
 const MAX_GUARD_ROUNDS = 5
 
+/**
+ * How many `run_blender` calls one run gets. Past it the call is refused and
+ * the model is told to finish; the guard still builds whatever it leaves.
+ */
+const MAX_BUILDS_PER_RUN = 10
+
 export interface StudioExtensionOptions {
   /** Each build the guard runs. Builds the model asks for arrive as tool results. */
   onBuild?: (build: BuildReport) => void
@@ -27,6 +33,7 @@ export function studioExtension(opts: StudioExtensionOptions): InlineExtension {
 function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   let inRun = false
   let lastGoodBuild: Manifest | undefined
+  let builds = 0
   let guardRounds = 0
 
   // Pi starts a fresh loop for every continuation — the guard's follow-up, a
@@ -35,7 +42,19 @@ function install(pi: ExtensionAPI, opts: StudioExtensionOptions): void {
   pi.on('agent_start', () => {
     if (inRun) return
     inRun = true
+    builds = 0
     guardRounds = 0
+  })
+
+  pi.on('tool_call', (event) => {
+    if (event.toolName !== runBlenderTool.name) return
+    if (builds >= MAX_BUILDS_PER_RUN) {
+      return {
+        block: true,
+        reason: `This run has used all ${MAX_BUILDS_PER_RUN} of its run_blender builds. Finish now: the scene is built once more when you stop, and any error comes back to you.`,
+      }
+    }
+    builds += 1
   })
 
   pi.on('tool_result', async (event, ctx) => {
