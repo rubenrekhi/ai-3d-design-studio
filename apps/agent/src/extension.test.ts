@@ -120,6 +120,78 @@ describe.skipIf(!hasBlender)('build cap', () => {
   }, 90_000)
 })
 
+describe('commit hook', () => {
+  it('fires once per run, with that run’s changes', async () => {
+    f = await fixture(
+      inOrder([
+        write('notes.txt', 'one'),
+        { text: 'wrote one' },
+        write('more.txt', 'two'),
+        { text: 'wrote two' },
+      ]),
+    )
+    await f.runtime.session.prompt('write one')
+    await f.runtime.session.prompt('write two')
+
+    expect(f.commits.map((c) => c.status)).toEqual(['ok', 'ok'])
+    const [first, second] = f.commits
+    if (first?.status !== 'ok' || second?.status !== 'ok') return
+    expect(first.changed.created.map((c) => c.path)).toEqual(['notes.txt'])
+    expect(second.changed.created.map((c) => c.path)).toEqual(['more.txt'])
+    expect(second.changed.modified).toEqual([])
+    expect(Object.keys(second.manifest)).toEqual(['more.txt', 'notes.txt'])
+    expect(second.conversation.length).toBeGreaterThan(
+      first.conversation.length,
+    )
+  })
+
+  it('commits no files from an aborted run but still hands over the conversation', async () => {
+    f = await fixture(
+      inOrder([write('scene.py', GOOD_SCENE), { abort: 'cancelled' }]),
+    )
+    await f.runtime.session.prompt('make a cube')
+
+    expect(f.builds).toEqual([])
+    const [commit] = f.commits
+    expect(commit?.status).toBe('aborted')
+    expect(commit).not.toHaveProperty('manifest')
+    expect(commit).not.toHaveProperty('changed')
+    expect(commit?.conversation[0]).toMatchObject({ type: 'session' })
+    expect(commit?.entryId).toBe(f.runtime.session.sessionManager.getLeafId())
+    expect(commit?.sessionId).toBe(f.runtime.session.sessionId)
+  })
+})
+
+describe.skipIf(!hasBlender)('commit hook after the guard', () => {
+  it('commits the scene the guard had repaired', async () => {
+    f = await fixture(
+      inOrder([{ text: 'hi' }, write('scene.py', GOOD_SCENE), { text: 'ok' }]),
+    )
+    await f.write('scene.py', BROKEN_SCENE)
+    await f.runtime.session.prompt('say hi')
+
+    const [commit] = f.commits
+    expect(commit?.status).toBe('ok')
+    if (commit?.status !== 'ok') return
+    expect(commit.changed.modified.map((c) => c.path)).toEqual(['scene.py'])
+    expect(commit.changed.created.map((c) => c.path)).toEqual(['scene.glb'])
+    expect(Object.keys(commit.manifest)).toEqual(['scene.glb', 'scene.py'])
+    expect(JSON.stringify(commit.conversation)).toContain('build-error')
+  }, 60_000)
+
+  it('commits nothing from a run that gave up on its build', async () => {
+    f = await fixture(() => ({ text: 'looks fine to me' }))
+    await f.write('scene.py', BROKEN_SCENE)
+    await f.runtime.session.prompt('build something')
+
+    const [commit] = f.commits
+    expect(commit?.status).toBe('error')
+    if (commit?.status !== 'error') return
+    expect(commit.error).toContain('boom')
+    expect(commit).not.toHaveProperty('manifest')
+  }, 90_000)
+})
+
 describe.skipIf(!hasBlender)('renders from an earlier run', () => {
   it('reach the model as stubs while this run’s stay images', async () => {
     const contexts: Context[] = []

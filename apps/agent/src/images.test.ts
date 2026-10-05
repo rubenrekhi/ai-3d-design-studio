@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { stubImages } from './images'
+import { stubConversation, stubImages } from './images'
 import type { AgentMessage } from './messages'
 
 type Content = Extract<AgentMessage, { role: 'toolResult' }>['content']
@@ -81,5 +81,39 @@ describe('stubImages', () => {
     expect(stubbed.content).toEqual([
       text('[image removed. Call screenshot again to see it.]'),
     ])
+  })
+})
+
+describe('stubConversation', () => {
+  it('keeps the header first and every entry in order, minus the pixels', () => {
+    const header = {
+      type: 'session' as const,
+      version: 3,
+      id: 'abc',
+      timestamp: 't',
+      cwd: '/w',
+    }
+    const entry = (id: string, parentId: string | null) => ({
+      id,
+      parentId,
+      timestamp: 't',
+    })
+    const conversation = stubConversation(header, [
+      {
+        type: 'message',
+        ...entry('1', null),
+        message: { role: 'user', content: 'look', timestamp: 1 },
+      },
+      { type: 'message', ...entry('2', '1'), message: inspection },
+      { type: 'model_change', ...entry('3', '2'), provider: 'p', modelId: 'm' },
+    ])
+    expect(conversation.map((e) => e.type)).toEqual([
+      'session',
+      'message',
+      'message',
+      'model_change',
+    ])
+    expect(JSON.stringify(conversation)).not.toContain(PNG)
+    expect(JSON.stringify(conversation)).toContain('azimuth 45°')
   })
 })
