@@ -3,6 +3,7 @@ export const SCENE_SETTINGS_NAME = '__studio_scene_settings__'
 export const PLAYER_SPAWN_NAME = '__studio_player_spawn__'
 
 export const SCENE_KIND_EXTRA = 'studio_scene_kind'
+export const SKY_EXTRA = 'studio_sky'
 export const CONTRACT_VERSION_EXTRA = 'studio_contract_version'
 export const SOURCE_NAME_EXTRA = 'studio_source_name'
 
@@ -64,19 +65,21 @@ export interface PlayerControllerConfig {
 }
 
 /**
- * Speeds read slower through a 50° first-person camera than they do on foot,
- * because the peripheral vision that sells motion is missing. These are what a
- * brisk walk and a run feel like on screen, not what they measure in life.
+ * Taken from the navigation contract of a viewer whose movement reads well: a
+ * body of this height and radius moving at 10 m/s. Speeds read slower through a
+ * 50° first-person camera than they do on foot, because the peripheral vision
+ * that sells motion is missing, so these are screen figures rather than real
+ * ones.
  */
 export const DEFAULT_PLAYER_CONTROLLER: Readonly<PlayerControllerConfig> = {
   height: 1.8,
   radius: 0.35,
-  eyeHeight: 1.65,
-  walkSpeed: 4.5,
-  runSpeed: 8,
-  jumpSpeed: 5,
-  gravity: 9.81,
-  maxSlopeDegrees: 50,
+  eyeHeight: 1.7,
+  walkSpeed: 10,
+  runSpeed: 16,
+  jumpSpeed: 4.5,
+  gravity: 9.8,
+  maxSlopeDegrees: 45,
   fallResetDistance: 12,
 }
 
@@ -156,4 +159,78 @@ export function readContractVersion(
   return typeof value === 'number' && Number.isInteger(value)
     ? value
     : undefined
+}
+
+export type SkyKind = 'daylight' | 'none'
+
+export const SKY_EXTRA_KEYS = {
+  turbidity: 'studio_sky_turbidity',
+  cloudCoverage: 'studio_sky_cloud_coverage',
+} as const
+
+export interface SkyConfig {
+  turbidity: number
+  cloudCoverage: number
+}
+
+/**
+ * Clear by default. The sky shader skips its noise entirely when coverage is
+ * zero, so cloud is the one setting here that costs frames rather than nothing.
+ */
+export const DEFAULT_SKY: Readonly<SkyConfig> = {
+  turbidity: 6,
+  cloudCoverage: 0,
+}
+
+export const SKY_LIMITS: {
+  [Key in keyof SkyConfig]: readonly [number, number]
+} = {
+  turbidity: [1, 20],
+  cloudCoverage: [0, 1],
+}
+
+export interface SkyReadResult {
+  kind: SkyKind
+  config: SkyConfig
+  errors: string[]
+}
+
+/**
+ * A walkable scene gets a sky unless it asks not to; an asset is one object on
+ * a neutral field and would only be lit oddly by one.
+ */
+export function readSky(
+  extras: Readonly<Record<string, unknown>>,
+  sceneKind: SceneKind | undefined,
+): SkyReadResult {
+  const config = { ...DEFAULT_SKY }
+  const errors: string[] = []
+  const declared = extras[SKY_EXTRA]
+  let kind: SkyKind = sceneKind === 'environment' ? 'daylight' : 'none'
+
+  if (declared !== undefined) {
+    if (declared === 'daylight' || declared === 'none') {
+      kind = declared
+    } else {
+      errors.push(`${SKY_EXTRA} must be 'daylight' or 'none'`)
+    }
+  }
+
+  for (const key of Object.keys(SKY_EXTRA_KEYS) as (keyof SkyConfig)[]) {
+    const extra = SKY_EXTRA_KEYS[key]
+    const value = extras[extra]
+    if (value === undefined) continue
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      errors.push(`${extra} must be a finite number`)
+      continue
+    }
+    const [minimum, maximum] = SKY_LIMITS[key]
+    if (value < minimum || value > maximum) {
+      errors.push(`${extra} must be between ${minimum} and ${maximum}`)
+      continue
+    }
+    config[key] = value
+  }
+
+  return { kind, config, errors }
 }

@@ -5,11 +5,13 @@ import {
   readContractVersion,
   readPlayerController,
   readSceneKind,
+  readSky,
   SCENE_CONTRACT_VERSION,
   SCENE_SETTINGS_NAME,
   sourceName,
   type CollisionKind,
   type SceneKind,
+  type SkyConfig,
 } from '@repo/scene-contract'
 import {
   Box3,
@@ -27,12 +29,21 @@ import {
 import type { SceneViewerInfo, SpawnDescription } from './types'
 
 const SHADOW_MAP_SIZE = 2048
+const SHADOW_BIAS = -0.0005
+const SHADOW_NORMAL_BIAS = 0.015
 
 export interface ColliderDescription {
   name: string
   kind: CollisionKind
   vertices: Float32Array
   indices: Uint32Array
+}
+
+export interface SkyDescription extends SkyConfig {
+  /** Unit vector from the scene toward the sun, taken from its own light. */
+  sunDirection: Vector3
+  /** The same light's strength, which the sky's ambient is held in step with. */
+  sunIntensity: number
 }
 
 export interface PreparedScene {
@@ -42,6 +53,7 @@ export interface PreparedScene {
   kind?: SceneKind
   contractVersion?: number
   hasLights: boolean
+  sky?: SkyDescription
   bounds: Sphere
   info: SceneViewerInfo
 }
@@ -77,6 +89,7 @@ export function prepareScene(source: Object3D): PreparedScene {
   })
 
   const bounds = boundsOf(visual)
+  const sun = brightestSun(lights)
   for (const light of lights) castShadows(light, bounds, visual)
   visual.updateMatrixWorld(true)
 
@@ -122,6 +135,17 @@ export function prepareScene(source: Object3D): PreparedScene {
     }
   }
 
+  const skySettings = readSky(settingsNode?.userData ?? {}, kind)
+  if (skySettings.errors.length > 0) {
+    throw new Error(skySettings.errors.join('; '))
+  }
+  // Without a sun there is no time of day to draw, so the scene keeps the
+  // viewer's flat background rather than a sky invented for it.
+  const sky =
+    skySettings.kind === 'daylight' && sun !== undefined
+      ? { ...skySettings.config, ...sun }
+      : undefined
+
   return {
     visual,
     colliders,
@@ -129,6 +153,7 @@ export function prepareScene(source: Object3D): PreparedScene {
     kind,
     contractVersion,
     hasLights: lights.length > 0,
+    sky,
     bounds,
     info: {
       kind,
@@ -137,6 +162,23 @@ export function prepareScene(source: Object3D): PreparedScene {
       hasSpawn: spawn !== undefined,
       controller: spawn?.controller,
     },
+  }
+}
+
+function brightestSun(
+  lights: Light[],
+): { sunDirection: Vector3; sunIntensity: number } | undefined {
+  let sun: DirectionalLight | undefined
+  for (const light of lights) {
+    if (!(light instanceof DirectionalLight)) continue
+    if (sun === undefined || light.intensity > sun.intensity) sun = light
+  }
+  if (sun === undefined) return undefined
+  return {
+    sunDirection: new Vector3(0, 0, 1)
+      .applyQuaternion(sun.getWorldQuaternion(new Quaternion()))
+      .normalize(),
+    sunIntensity: sun.intensity,
   }
 }
 
@@ -174,7 +216,8 @@ export function castShadows(
 
   light.castShadow = true
   light.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE)
-  light.shadow.normalBias = 0.02
+  light.shadow.bias = SHADOW_BIAS
+  light.shadow.normalBias = SHADOW_NORMAL_BIAS
 
   if (!(light instanceof DirectionalLight)) {
     light.shadow.camera.far = bounds.radius * 4

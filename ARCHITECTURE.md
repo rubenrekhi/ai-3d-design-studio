@@ -161,9 +161,20 @@ otherwise; `COMPAT` keeps Blender's own unitless strengths, which is what the vi
 directly while it has no exposure control. The viewer falls back to a flat neutral pair only when
 the GLB carries no light at all. A directional light exports with a direction and no useful
 position, so the viewer walks it back along its own aim until the whole scene is in front of it
-before fitting a shadow camera. There is still no sky or environment reflection, so a surface facing
-away from every lamp goes dark rather than picking up bounce, and a polished surface has nothing to
-mirror.
+before fitting a shadow camera. An environment also gets a sky, and the sky lights it back.
+
+glTF has nowhere to carry a sky — Blender's exporter has no world option of any kind — so the viewer
+draws one instead, from the only thing that matters and the only thing the export already states:
+where the sun is. A daylight model turns that direction into the matching sky, and the same sky is
+prefiltered into the environment map, which is what stops a face turned away from every lamp going
+black and gives a polished surface something to mirror. `studio_sky_turbidity` and
+`studio_sky_cloud_coverage` shape it; `studio_sky` set to `none` suppresses it for a scene that
+should keep a plain background. A scene with no directional light gets none, because there is no sun
+to draw it from. Night is the sun below the horizon, not a dim daytime one.
+
+The sun disc is drawn in the sky but hidden while the environment map is generated, since
+prefiltering turns it into a ringing hotspot. The model is a daylight one: below the horizon it
+gives darkness, not stars.
 
 Collision is explicit and suffix-driven:
 

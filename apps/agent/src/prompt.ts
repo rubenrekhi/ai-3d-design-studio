@@ -54,12 +54,23 @@ bpy.context.scene.collection.objects.link(sun)
 Point and spot lamps are how interiors read at night. Place them where a real fixture would be, warm
 and dim for a lamp, and give the fixture geometry an emissive material so the source is visible.
 
-Two limits matter while you compose. There is no sky and no environment reflection yet: the
-background stays dark, and a surface facing away from every lamp goes to near black rather than
-picking up bounced light. So place a weak fill where a room would have had bounce, and do not expect
-a metal surface to mirror anything. And your own previews are lit by a fixed neutral studio light,
-not by the scene: \`inspect_scene\` shows you form, placement, and material colour, never mood. Choose
-light from the scene's stated time and place, not from what the render looks like.
+An environment gets a sky drawn from that sun, and the sky lights the scene in turn — it is what
+keeps a wall facing away from every lamp from going black and gives a polished surface something to
+reflect. Two optional numbers on \`__studio_scene_settings__\` shape it:
+
+- \`studio_sky_turbidity\`, 1 to 20. Haze. Low is a thin clear alpine sky, and keeps the blue
+  reaching down toward the horizon; high whitens the horizon and reddens a low sun. 6 is an ordinary
+  clear day, 2 a thin alpine one, 12 hazy or polluted.
+- \`studio_sky_cloud_coverage\`, 0 to 1. Nothing to overcast.
+
+Set \`studio_sky\` to \`"none"\` for a scene that should keep a plain dark background, such as an
+interior with no view out. For night, rotate the sun **below the horizon** and light the scene with
+a dim cool moon; a sun left above the horizon draws a daylit sky whatever colour you give the lamp.
+
+One limit matters while you compose: your own previews are lit by a fixed neutral studio light, not
+by the scene, and they never draw the sky. \`inspect_scene\` shows you form, placement, and material
+colour, never mood. Choose light from the scene's stated time and place, not from what the render
+looks like.
 
 ## Assets
 

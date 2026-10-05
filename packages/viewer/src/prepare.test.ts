@@ -149,6 +149,29 @@ describe('prepareScene', () => {
     disposePreparedScene(prepared)
   })
 
+  it("takes the sky from the scene's own sun", () => {
+    const scene = environment()
+    const sun = new DirectionalLight(undefined, 3)
+    sun.rotation.set(-Math.PI / 2, 0, 0)
+    scene.add(sun)
+
+    const prepared = prepareScene(scene)
+    if (prepared.sky === undefined) throw new Error('missing sky')
+    // Aimed straight down, so the sun sits directly overhead.
+    expect(prepared.sky.sunDirection.y).toBeCloseTo(1)
+    expect(prepared.sky.turbidity).toBe(6)
+    expect(prepared.sky.sunIntensity).toBe(3)
+    // Clear unless the scene asks for cloud: the noise is the sky's only real cost.
+    expect(prepared.sky.cloudCoverage).toBe(0)
+    disposePreparedScene(prepared)
+  })
+
+  it('draws no sky for a scene with no sun to draw it from', () => {
+    const prepared = prepareScene(environment())
+    expect(prepared.sky).toBeUndefined()
+    disposePreparedScene(prepared)
+  })
+
   it('leaves a light with nothing to cast from alone', () => {
     const scene = environment()
     const ambient = new AmbientLight()
@@ -175,6 +198,7 @@ describe('prepareScene', () => {
     const prepared = prepareScene(gltf.scene)
     expect(prepared.kind).toBe('environment')
     expect(prepared.hasLights).toBe(true)
+    expect(prepared.sky).toMatchObject({ turbidity: 4, cloudCoverage: 0.25 })
     expect(prepared.spawn?.position[1]).toBeCloseTo(0)
     expect(prepared.colliders.map((collider) => collider.name)).toEqual(
       expect.arrayContaining([
