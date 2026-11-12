@@ -27,3 +27,4 @@ Stack: <!-- e.g. "2 of 4 — builds on #12". Delete this line if the PR is stand
 - [ ] `packages/shared` still holds only schemas/types, no runtime logic
 - [ ] No secrets or `.env` values committed
 - [ ] If stacked: this layer is independently reviewable and `pnpm typecheck` passes at this layer, not just at the top of the stack
+- [ ] Exactly one commit; fix-ups were amended in, not stacked on
